@@ -45,7 +45,9 @@ npm run dev
 
 ## Статус
 
-Прототип: сквозная цепочка на 3–5 позициях. См. [`docs/STATUS.md`](docs/STATUS.md).
+Прототип работает вживую (распознавание, поиск цен со скриншотами, сборка). См.
+[`docs/STATUS.md`](docs/STATUS.md). **Продолжение работы / новая сессия:**
+[`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 Боевая калибровка сетевых этапов (разбор PDF, поиск, mos.ru) — через диагностический CLI
 `python -m engine.calibrate`; см. [`docs/CALIBRATION.md`](docs/CALIBRATION.md).
