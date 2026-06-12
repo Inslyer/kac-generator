@@ -16,4 +16,6 @@ if [ ! -f .env ]; then
 fi
 
 echo "Движок: http://127.0.0.1:8765 (Ctrl+C для остановки)"
-uvicorn app:app --host 127.0.0.1 --port 8765
+# запуск из корня репозитория как пакет engine.app (движок использует относительные импорты)
+cd ..
+exec uvicorn engine.app:app --host 127.0.0.1 --port 8765

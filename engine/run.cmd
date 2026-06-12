@@ -15,4 +15,6 @@ if not exist .env (
 )
 
 echo Движок: http://127.0.0.1:8765 (Ctrl+C для остановки)
-uvicorn app:app --host 127.0.0.1 --port 8765
+REM запуск из корня репозитория как пакет engine.app (движок использует относительные импорты)
+cd ..
+uvicorn engine.app:app --host 127.0.0.1 --port 8765
