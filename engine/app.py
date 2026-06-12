@@ -17,13 +17,14 @@ from pathlib import Path
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from datetime import date
 
 from pydantic import BaseModel
 
 from .browser import Browser
-from .config import CACHE_DIR, UPLOAD_DIR, settings
+from .config import CACHE_DIR, ENGINE_DIR, UPLOAD_DIR, settings
 from .llm import LLMUnavailable
 from .models import PositionResult, SpecPosition
 from .parsers.letters import letter_to_offer, parse_letter
@@ -225,3 +226,11 @@ def download(job_id: str, kind: str) -> FileResponse:
         raise HTTPException(404, "Файл не готов")
     path = Path(job.outputs[kind])
     return FileResponse(path, filename=path.name)
+
+
+# Отдача интерфейса прямо из движка (http://127.0.0.1:8765/) — тот же origin, что и API,
+# поэтому браузер не блокирует запросы (в отличие от https-страницы на GitHub Pages → http-localhost).
+# Монтируется ПОСЛЕ всех API-маршрутов, чтобы не перехватывать их.
+_WEB_DIR = ENGINE_DIR.parent / "web"
+if _WEB_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="ui")

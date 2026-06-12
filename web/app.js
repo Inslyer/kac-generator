@@ -10,6 +10,12 @@ let positions = [];        // модель таблицы позиций
 
 $("fixDate").valueAsDate = new Date();
 
+// Если интерфейс открыт прямо из движка (http://127.0.0.1:8765/), обращаемся к тому же origin —
+// это убирает блокировку браузером запросов с https-страницы на http-localhost.
+if (location.protocol === "http:" && /^(127\.0\.0\.1|localhost)/.test(location.host)) {
+  $("engine").value = location.origin;
+}
+
 /* ---------- загрузка файлов ---------- */
 function wireDrop(dropId, inputId, store, listId) {
   const drop = $(dropId), input = $(inputId);
