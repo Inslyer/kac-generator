@@ -2,6 +2,10 @@
 
 Браузер запускается локально на машине сметчика (российский IP, headed по умолчанию),
 что позволяет обходить антибот-защиту магазинов и mos.ru.
+
+Cookie сохраняются в файл (data/cache/cookies.json, storage_state). Поэтому капчу Яндекса
+достаточно решить один раз — на следующих запусках cookie подгружаются и капча не появляется,
+пока живы. Файл лежит локально и в git не коммитится.
 """
 from __future__ import annotations
 
@@ -14,9 +18,11 @@ from .config import CACHE_DIR, settings
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
+COOKIE_FILE = CACHE_DIR / "cookies.json"
+
 
 class Browser:
-    """Лёгкая обёртка. Использовать как контекстный менеджер."""
+    """Лёгкая обёртка. Cookie сохраняются между запусками (storage_state)."""
 
     def __init__(self, headed: bool | None = None):
         self.headed = settings.browser_headed if headed is None else headed
@@ -28,15 +34,22 @@ class Browser:
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=not self.headed)
-        self.context = self._browser.new_context(
-            user_agent=UA,
-            locale="ru-RU",
-            viewport={"width": 1366, "height": 900},
-        )
+        kwargs = dict(user_agent=UA, locale="ru-RU",
+                      viewport={"width": 1366, "height": 900})
+        if COOKIE_FILE.exists():
+            kwargs["storage_state"] = str(COOKIE_FILE)  # подгружаем cookie (решённую капчу)
+        self.context = self._browser.new_context(**kwargs)
         self.context.set_default_timeout(20000)
         return self
 
+    def _save_cookies(self) -> None:
+        try:
+            self.context.storage_state(path=str(COOKIE_FILE))
+        except Exception:
+            pass
+
     def __exit__(self, *exc) -> None:
+        self._save_cookies()  # сохраняем cookie (в т.ч. решённую капчу) на следующий запуск
         for obj in (self.context, self._browser, self._pw):
             try:
                 obj.close() if hasattr(obj, "close") else obj.stop()
