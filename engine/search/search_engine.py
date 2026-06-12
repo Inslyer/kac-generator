@@ -32,15 +32,44 @@ def yandex_api_search(query: str, n: int = 20) -> list[str]:
 
 
 def browser_search(browser, query: str, n: int = 20) -> list[str]:
-    """Фолбэк: парсинг выдачи поисковика через Playwright (российский IP)."""
+    """Фолбэк: парсинг выдачи поисковика через Playwright (российский IP).
+
+    Ссылки собираются ОДНИМ атомарным вызовом evaluate(), иначе страница выдачи
+    успевает редиректнуть и контекст разрушается («Execution context was destroyed»).
+    Любая ошибка/капча → возвращаем то, что успели (вплоть до пустого списка), без падения.
+    """
+    from ..config import settings
+
+    def _grab(page):
+        return page.evaluate(
+            "() => Array.from(document.querySelectorAll('a'))"
+            ".map(a => a.href).filter(h => h && h.startsWith('http'))"
+        ) or []
+
+    def _is_captcha(page) -> bool:
+        u = (page.url or "").lower()
+        return "captcha" in u or "/checkcaptcha" in u or "showcaptcha" in u
+
     urls: list[str] = []
     search_url = f"https://yandex.ru/search/?text={quote_plus(query)}"
-    with browser.page(search_url) as page:
-        page.wait_for_timeout(2000)
-        for a in page.query_selector_all("a.Link, a.OrganicTitle-Link, a[href^='http']"):
-            href = a.get_attribute("href") or ""
-            if href.startswith("http"):
-                urls.append(href)
+    try:
+        with browser.page(search_url) as page:
+            page.wait_for_timeout(2500)
+            try:
+                page.wait_for_load_state("networkidle", timeout=6000)
+            except Exception:
+                pass
+            # Капча Яндекса. В видимом режиме ждём, пока пользователь решит её в окне браузера.
+            if _is_captcha(page) and settings.browser_headed:
+                print("⚠ Яндекс показал капчу — решите её в открытом окне браузера "
+                      "(ждём до 90 сек)…")
+                for _ in range(45):
+                    page.wait_for_timeout(2000)
+                    if not _is_captcha(page):
+                        break
+            urls = _grab(page)
+    except Exception:
+        return []
     # дедуп по хосту, отбрасываем маркетплейсы и сам яндекс
     seen, out = set(), []
     for u in urls:

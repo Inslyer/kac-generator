@@ -165,23 +165,26 @@ def capture(req: CaptureRequest) -> dict:
     from .requisites.dadata import screenshot_requisites
     from .search.agent import _extract_from_page
     result = {"screenshot_product": "", "screenshot_requisites": "", "extracted": {}}
-    with _browser_factory() as browser:
-        with browser.page(req.url) as page:
-            page.wait_for_timeout(1500)
-            shot = CACHE_DIR / f"prod_{abs(hash(req.url)) % 10**10}.png"
-            page.screenshot(path=str(shot), clip={"x": 0, "y": 0, "width": 1366, "height": 900})
-            result["screenshot_product"] = shot.name
-            if req.extract:
-                try:
-                    data = _extract_from_page(page.inner_text("body")) or {}
-                    result["extracted"] = data
-                except Exception:
-                    pass
-        inn = req.inn or str(result["extracted"].get("seller_inn") or "")
-        if inn:
-            rshot = screenshot_requisites(browser, inn)
-            if rshot:
-                result["screenshot_requisites"] = Path(rshot).name
+    try:
+        with _browser_factory() as browser:
+            with browser.page(req.url) as page:
+                page.wait_for_timeout(1500)
+                shot = CACHE_DIR / f"prod_{abs(hash(req.url)) % 10**10}.png"
+                page.screenshot(path=str(shot), clip={"x": 0, "y": 0, "width": 1366, "height": 900})
+                result["screenshot_product"] = shot.name
+                if req.extract:
+                    try:
+                        data = _extract_from_page(page.inner_text("body")) or {}
+                        result["extracted"] = data
+                    except Exception:
+                        pass
+            inn = req.inn or str(result["extracted"].get("seller_inn") or "")
+            if inn:
+                rshot = screenshot_requisites(browser, inn)
+                if rshot:
+                    result["screenshot_requisites"] = Path(rshot).name
+    except Exception as e:
+        raise HTTPException(502, f"Скриншот не снят: {type(e).__name__}: {e}")
     return result
 
 
@@ -199,8 +202,11 @@ def search_position(req: SearchRequest) -> dict:
                        discipline=req.discipline)
     year = str(date.today().year)
     quarter = str((date.today().month - 1) // 3 + 1)
-    with _browser_factory() as browser:
-        res = research_position(browser, pos, year, quarter)
+    try:
+        with _browser_factory() as browser:
+            res = research_position(browser, pos, year, quarter)
+    except Exception as e:
+        raise HTTPException(502, f"Поиск не выполнен: {type(e).__name__}: {e}")
     return {"offers": [_offer_to_dict(o) for o in res.offers],
             "year": res.year, "quarter": res.quarter,
             "found": res.sources_found, "checked": res.sources_checked,

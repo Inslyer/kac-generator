@@ -23,6 +23,7 @@ EXTRACT_SYSTEM = (
     "price_with_vat (число — цена за единицу в рублях С НДС, без разделителей), "
     "product_title (строка), "
     "moscow_pickup (bool — доступен ли самовывоз/склад в Москве или МО), "
+    "city (строка — город/регион склада или продавца, если указан, иначе пусто), "
     "seller_inn (строка — ИНН продавца, если указан на странице, иначе пусто). "
     "Если цена не найдена — price_with_vat: null. Только JSON."
 )
@@ -55,7 +56,10 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
     queries = build_queries(pos)
     candidates: list[str] = []
     for q in queries:
-        candidates += search_candidates(browser, q, n=settings.min_sources)
+        try:
+            candidates += search_candidates(browser, q, n=settings.min_sources)
+        except Exception:
+            continue  # сбой/капча по одному запросу не валит всю позицию
     # дедуп по хосту
     seen, urls = set(), []
     for u in candidates:
@@ -78,10 +82,14 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 data = _extract_from_page(text)
                 if not data or not data.get("price_with_vat"):
                     continue
-                if not data.get("moscow_pickup", False):
-                    continue
+                # регион НЕ фильтруем жёстко: страница часто не пишет про самовывоз явно.
+                # Берём оффер, проставляем предполагаемый регион — сметчик проверит/поправит
+                # в таблице (не-Москва/МО подсвечивается).
+                in_region = bool(data.get("moscow_pickup", False))
                 inn = str(data.get("seller_inn") or "").strip()
                 req = fetch_requisites(inn) if inn else Requisites(status=OrgStatus.SUPPLIER)
+                if not in_region:
+                    req.city = str(data.get("city") or "уточнить")
                 shot = CACHE_DIR / f"prod_{abs(hash(url)) % 10**10}.png"
                 page.screenshot(path=str(shot), clip={"x": 0, "y": 0,
                                                        "width": 1366, "height": 900})
@@ -90,7 +98,7 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                     price_with_vat=float(data["price_with_vat"]),
                     url=url,
                     product_title=str(data.get("product_title", "")),
-                    in_moscow_region=True,
+                    in_moscow_region=in_region,
                     requisites=req,
                     screenshot_product=str(shot),
                     screenshot_requisites=str(req_shot) if req_shot else None,
