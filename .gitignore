@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+engine/data/cache/
+engine/data/output/
+engine/data/uploads/
+
+# Node
+node_modules/
+web/dist/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Не коммитим реальные клиентские материалы
+samples/private/
