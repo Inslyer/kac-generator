@@ -74,6 +74,18 @@ def check_env() -> dict:
              f"tesseract — {'есть' if env['tesseract'] else 'нет (не обязателен: сканы идут через Claude vision)'}")
     except Exception:
         env["tesseract"] = False
+    # Yandex Search API — ключевой источник поиска (без капчи)
+    if settings.yandex_search_api_key and settings.yandex_search_folder_id:
+        from engine.search.search_engine import yandex_api_search
+        try:
+            urls = yandex_api_search("ноутбук купить москва", n=5)
+            line(OK if urls else WARN,
+                 f"Yandex Search API — ключ задан, тестовый запрос вернул {len(urls)} ссылок"
+                 + ("" if urls else " (проверьте права/folderId/баланс — детали в логе выше)"))
+        except Exception as e:
+            line(BAD, f"Yandex Search API — ошибка: {e}")
+    else:
+        line(WARN, "Yandex Search API — ключ не задан (поиск пойдёт через браузер → возможна капча)")
     line("•", f"параметры: НДС {settings.vat_rate}% · источников ≥{settings.min_sources} · "
               f"в КАЦ {settings.top_prices} макс. · регион «{settings.region}»")
     return env

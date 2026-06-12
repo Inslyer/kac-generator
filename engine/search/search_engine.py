@@ -1,7 +1,9 @@
 """Поиск кандидатов-магазинов по запросу: Yandex Search API или браузерный фолбэк."""
 from __future__ import annotations
 
+import base64
 import re
+import time
 from urllib.parse import quote_plus, urlparse
 
 import httpx
@@ -11,24 +13,77 @@ from ..config import settings
 # домены-агрегаторы/маркетплейсы, которые часто не дают «отпускную цену поставщика»
 _SKIP_HOSTS = {"market.yandex.ru", "ozon.ru", "wildberries.ru", "avito.ru", "youla.ru"}
 
+# Yandex Search API v2 (Yandex Cloud): асинхронный веб-поиск, авторизация Api-Key.
+_V2_SEARCH = "https://searchapi.api.cloud.yandex.net/v2/web/searchAsync"
+_V2_OP = "https://operation.api.cloud.yandex.net/operations/{id}"
+# Legacy XML (для аккаунтов, где включён старый интерфейс).
+_XML_GET = "https://yandex.ru/search/xml"
+
 
 def _host(url: str) -> str:
     return urlparse(url).netloc.replace("www.", "")
 
 
-def yandex_api_search(query: str, n: int = 20) -> list[str]:
-    """Yandex Search API (xml). Требует YANDEX_SEARCH_API_KEY + folder_id."""
-    if not (settings.yandex_search_api_key and settings.yandex_search_folder_id):
+def _urls_from_xml(xml: str) -> list[str]:
+    return re.findall(r"<url>(.*?)</url>", xml)
+
+
+def yandex_api_v2(query: str, n: int = 20) -> list[str]:
+    """Yandex Search API v2 (асинхронный). Возвращает список URL или [] при недоступности."""
+    key, folder = settings.yandex_search_api_key, settings.yandex_search_folder_id
+    if not (key and folder):
         return []
-    url = "https://yandex.ru/search/xml"
-    params = {
-        "folderid": settings.yandex_search_folder_id,
-        "apikey": settings.yandex_search_api_key,
-        "query": query, "l10n": "ru", "sortby": "rlv", "groupby": f"groups-on-page={n}",
+    headers = {"Authorization": f"Api-Key {key}"}
+    body = {
+        "query": {"searchType": "SEARCH_TYPE_RU", "queryText": query},
+        "folderId": folder,
+        "groupSpec": {"groupMode": "GROUP_MODE_FLAT",
+                      "groupsOnPage": str(n), "docsInGroup": "1"},
+        "responseFormat": "FORMAT_XML",
     }
-    r = httpx.get(url, params=params, timeout=20)
-    r.raise_for_status()
-    return re.findall(r"<url>(.*?)</url>", r.text)
+    try:
+        r = httpx.post(_V2_SEARCH, json=body, headers=headers, timeout=30)
+        if r.status_code >= 400:
+            print(f"⚠ Yandex API v2: HTTP {r.status_code} — {r.text[:200]}")
+            return []
+        op_id = r.json().get("id")
+        if not op_id:
+            return []
+        for _ in range(30):  # опрос операции до 60 сек
+            time.sleep(2)
+            o = httpx.get(_V2_OP.format(id=op_id), headers=headers, timeout=30).json()
+            if o.get("done"):
+                if "error" in o:
+                    print(f"⚠ Yandex API v2: операция с ошибкой — {str(o['error'])[:200]}")
+                    return []
+                raw = (o.get("response") or {}).get("rawData", "")
+                xml = base64.b64decode(raw).decode("utf-8", "ignore") if raw else ""
+                return _urls_from_xml(xml)
+    except Exception as e:
+        print(f"⚠ Yandex API v2: {type(e).__name__}: {e}")
+    return []
+
+
+def yandex_api_xml(query: str, n: int = 20) -> list[str]:
+    """Legacy Yandex XML (GET с apikey/folderid). Запасной путь."""
+    key, folder = settings.yandex_search_api_key, settings.yandex_search_folder_id
+    if not (key and folder):
+        return []
+    try:
+        r = httpx.get(_XML_GET, params={
+            "folderid": folder, "apikey": key, "query": query,
+            "l10n": "ru", "sortby": "rlv", "groupby": f"groups-on-page={n}",
+        }, timeout=20)
+        if r.status_code >= 400:
+            return []
+        return _urls_from_xml(r.text)
+    except Exception:
+        return []
+
+
+def yandex_api_search(query: str, n: int = 20) -> list[str]:
+    """Через Yandex Search API: сперва v2, затем legacy-XML. [] если ключ не задан/недоступен."""
+    return yandex_api_v2(query, n) or yandex_api_xml(query, n)
 
 
 def browser_search(browser, query: str, n: int = 20) -> list[str]:
