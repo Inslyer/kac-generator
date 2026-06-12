@@ -57,7 +57,8 @@ def _structure_positions(text: str = "", images: list[str] | None = None) -> lis
     """Зовёт Claude (текст или vision) и возвращает сырой массив позиций."""
     prompt = (f"Спецификация (текст):\n\n{text[:30000]}" if text
               else "Распознай таблицу-спецификацию со страниц-изображений.")
-    return complete_json(prompt, system=SYSTEM, smart=True, max_tokens=8192, images=images)
+    # быстрая модель: на сканах (vision) это в разы быстрее, качество таблиц достаточное
+    return complete_json(prompt, system=SYSTEM, smart=False, max_tokens=8192, images=images)
 
 
 def parse_spec(
