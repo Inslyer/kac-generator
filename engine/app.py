@@ -162,10 +162,16 @@ class CaptureRequest(BaseModel):
 
 @app.post("/capture")
 def capture(req: CaptureRequest) -> dict:
-    """Снимает скриншот карточки товара (+ реквизитов по ИНН) и извлекает цену/ИНН со страницы."""
+    """Снимает скриншот карточки товара и добирает реквизиты продавца с его сайта.
+
+    Реквизиты берутся с сайта магазина (раздел «Контакты»/«Реквизиты»), т.к. checko.ru/ФНС
+    недоступны под зарубежным VPN. Панель реквизитов в ТКП рисуется текстом из этих данных.
+    """
     from .requisites.dadata import screenshot_requisites
+    from .requisites.supplier import fetch_requisites_from_site
     from .search.agent import _extract_from_page
-    result = {"screenshot_product": "", "screenshot_requisites": "", "extracted": {}}
+    result: dict = {"screenshot_product": "", "screenshot_requisites": "",
+                    "extracted": {}, "requisites": {}}
     try:
         with _browser_factory() as browser:
             with browser.page(req.url) as page:
@@ -180,6 +186,12 @@ def capture(req: CaptureRequest) -> dict:
                     except Exception:
                         pass
             inn = req.inn or str(result["extracted"].get("seller_inn") or "")
+            site_req = fetch_requisites_from_site(browser, req.url)
+            if site_req:
+                result["requisites"] = site_req.model_dump()
+                inn = inn or site_req.inn
+                if not result["extracted"].get("seller_inn"):
+                    result["extracted"]["seller_inn"] = site_req.inn
             if inn:
                 rshot = screenshot_requisites(browser, inn)
                 if rshot:

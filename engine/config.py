@@ -39,6 +39,20 @@ class Settings(BaseSettings):
 
     browser_headed: bool = True
 
+    # ресурсы для скриншота карточки реквизитов по ИНН (пробуются по порядку, до первого
+    # отрисовавшего карточку). checko.ru исключён — блокирует зарубежный IP/VPN. {inn} —
+    # подстановка ИНН. Переопределяется через .env: REQUISITES_SOURCES="url1;url2"
+    requisites_sources: str = (
+        "https://www.audit-it.ru/contragent/{inn};"
+        "https://sbis.ru/contragents/{inn};"
+        "https://e-ecolog.ru/org/{inn};"
+        "https://zachestnyibiznes.ru/search?query={inn}"
+    )
+
+    @property
+    def requisites_sources_list(self) -> list[str]:
+        return [u.strip() for u in self.requisites_sources.split(";") if u.strip()]
+
     @property
     def custom_makers_list(self) -> list[str]:
         return [m.strip().lower() for m in self.custom_makers.split(";") if m.strip()]

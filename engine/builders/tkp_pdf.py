@@ -72,6 +72,43 @@ def _place_image(page: fitz.Page, rect: fitz.Rect, img_path: str | None, label: 
                          fontname=FONT, fontsize=8, color=(0.5, 0.5, 0.5))
 
 
+def _draw_requisites_panel(page: fitz.Page, rect: fitz.Rect, req) -> None:
+    """Рисует панель реквизитов продавца текстом (наименование, ИНН, КПП, ОГРН, адрес).
+
+    Заменяет скриншот checko.ru, недоступный под зарубежным VPN.
+    """
+    page.draw_rect(rect, color=(0.8, 0.8, 0.8), width=0.5)
+    x = rect.x0 + 8
+    y = rect.y0 + 18
+    page.insert_text((x, y), "Реквизиты продавца", fontname=FONT, fontsize=10)
+    y += 18
+    fields = [
+        ("Наименование", getattr(req, "name", "")),
+        ("ИНН", getattr(req, "inn", "")),
+        ("КПП", getattr(req, "kpp", "")),
+        ("ОГРН", getattr(req, "ogrn", "")),
+        ("Адрес", getattr(req, "address", "")),
+        ("Город", getattr(req, "city", "")),
+    ]
+    max_chars = max(12, int((rect.width - 16) / _text_len("0", 8)))
+    any_field = False
+    for label, val in fields:
+        if not val:
+            continue
+        any_field = True
+        for chunk in _wrap(f"{label}: {val}", max_chars):
+            if y > rect.y1 - 10:
+                break
+            page.insert_text((x, y), chunk, fontname=FONT, fontsize=8)
+            y += 12
+    if not getattr(req, "inn", ""):
+        page.insert_text((x, y + 2), "[ИНН не найден на сайте продавца]",
+                         fontname=FONT, fontsize=8, color=(0.5, 0.5, 0.5))
+    elif not any_field:
+        page.insert_text((x, y + 2), "[реквизиты не получены]",
+                         fontname=FONT, fontsize=8, color=(0.5, 0.5, 0.5))
+
+
 def _draw_position_page(doc: fitz.Document, res: PositionResult, fix_date: str) -> None:
     page = doc.new_page(width=A4.width, height=A4.height)
     _register_font(page)
@@ -94,7 +131,12 @@ def _draw_position_page(doc: fitz.Document, res: PositionResult, fix_date: str) 
         right = fitz.Rect(split_x + gap / 2, ry0, A4.width - MARGIN, ry1)
         offer = offers[k] if k < len(offers) else None
         _place_image(page, left, offer.screenshot_product if offer else None, "карточка товара")
-        _place_image(page, right, offer.screenshot_requisites if offer else None, "реквизиты")
+        if offer and offer.screenshot_requisites and Path(offer.screenshot_requisites).exists():
+            _place_image(page, right, offer.screenshot_requisites, "реквизиты")
+        elif offer:
+            _draw_requisites_panel(page, right, offer.requisites)
+        else:
+            _place_image(page, right, None, "реквизиты")
 
 
 def _draw_cover(doc: fitz.Document, object_name: str, fix_date: str) -> None:

@@ -6,12 +6,14 @@
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ..config import CACHE_DIR, settings
 from ..llm import complete_json
 from ..models import OrgStatus, PositionResult, PriceOffer, Requisites, SpecPosition
 from ..requisites.dadata import fetch_requisites, screenshot_requisites
+from ..requisites.supplier import fetch_requisites_from_site
 from .search_engine import search_candidates
 
 QUERY_SYSTEM = (
@@ -86,23 +88,34 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 # Берём оффер, проставляем предполагаемый регион — сметчик проверит/поправит
                 # в таблице (не-Москва/МО подсвечивается).
                 in_region = bool(data.get("moscow_pickup", False))
-                inn = str(data.get("seller_inn") or "").strip()
-                req = fetch_requisites(inn) if inn else Requisites(status=OrgStatus.SUPPLIER)
+                inn = re.sub(r"\D", "", str(data.get("seller_inn") or ""))
+                # ИНН с карточки товара бывает редко → обогащаем DaData (если есть токен),
+                # иначе/дополнительно добираем реквизиты с сайта продавца (работает под VPN,
+                # в отличие от checko/ФНС).
+                req = fetch_requisites(inn) if len(inn) in (10, 12) else None
+                if req is None or not req.inn or not req.name:
+                    site_req = fetch_requisites_from_site(browser, url)
+                    if site_req:
+                        req = site_req
+                if req is None:
+                    req = Requisites(status=OrgStatus.SUPPLIER)
                 if not in_region:
                     req.city = str(data.get("city") or "уточнить")
                 shot = CACHE_DIR / f"prod_{abs(hash(url)) % 10**10}.png"
                 page.screenshot(path=str(shot), clip={"x": 0, "y": 0,
                                                        "width": 1366, "height": 900})
-                req_shot = screenshot_requisites(browser, inn) if inn else None
-                offers.append(PriceOffer(
-                    price_with_vat=float(data["price_with_vat"]),
-                    url=url,
-                    product_title=str(data.get("product_title", "")),
-                    in_moscow_region=in_region,
-                    requisites=req,
-                    screenshot_product=str(shot),
-                    screenshot_requisites=str(req_shot) if req_shot else None,
-                ))
+            # скриншот карточки реквизитов по ИНН (ресурсы из config, не checko); если ни один
+            # не отрисовался — в ТКП рисуется текстовая панель из req
+            req_shot = screenshot_requisites(browser, req.inn) if req.inn else None
+            offers.append(PriceOffer(
+                price_with_vat=float(data["price_with_vat"]),
+                url=url,
+                product_title=str(data.get("product_title", "")),
+                in_moscow_region=in_region,
+                requisites=req,
+                screenshot_product=str(shot),
+                screenshot_requisites=str(req_shot) if req_shot else None,
+            ))
         except Exception:
             continue
     return offers, checked

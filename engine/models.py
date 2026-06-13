@@ -33,6 +33,8 @@ class Requisites(BaseModel):
     name: str = ""                   # наименование (графа K)
     inn: str = ""                    # ИНН (графа M)
     kpp: str = ""                    # КПП (графа L)
+    ogrn: str = ""                   # ОГРН/ОГРНИП (для панели реквизитов в ТКП)
+    address: str = ""                # юридический адрес (для панели реквизитов в ТКП)
     city: str = "Москва"             # населённый пункт склада (графа O)
     status: OrgStatus = OrgStatus.SUPPLIER  # графа P
 

@@ -230,8 +230,14 @@ async function captureOffer(pi, oi) {
     o.screenshot_requisites = d.screenshot_requisites || o.screenshot_requisites;
     const ex = d.extracted || {};
     if (ex.price_with_vat && !o.price_with_vat) o.price_with_vat = ex.price_with_vat;
-    if (ex.seller_inn && !o.inn) o.inn = String(ex.seller_inn);
     if (ex.product_title) o.product_title = ex.product_title;
+    // реквизиты продавца, добытые с его сайта
+    const rq = d.requisites || {};
+    if (rq.inn && !o.inn) o.inn = String(rq.inn);
+    else if (ex.seller_inn && !o.inn) o.inn = String(ex.seller_inn);
+    if (rq.name && !o.org_name) o.org_name = rq.name;
+    if (rq.kpp && !o.kpp) o.kpp = rq.kpp;
+    if (rq.city && (!o.city || o.city === "Москва")) o.city = rq.city;
   } catch (e) {
     alert("Не удалось снять скриншот: " + e.message);
   } finally {
