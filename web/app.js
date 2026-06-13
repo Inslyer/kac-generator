@@ -165,7 +165,7 @@ function posHtml(p, i) {
       <input class="u" type="text" value="${esc(p.unit)}" data-p="${i}" data-f="unit" title="ед.">
       <input class="q" type="number" step="0.001" value="${p.qty || ""}" data-p="${i}" data-f="qty" title="кол-во">
       <label class="muted" style="font-weight:500"><input type="checkbox" ${p.is_unique ? "checked" : ""} data-p="${i}" data-f="is_unique"> уник.</label>
-      ${p.is_unique ? "" : `<button class="ghost sm search" data-p="${i}" title="найти цены онлайн (≥12 источников → 3 макс.)">${p._searching ? '<span class="spin"></span> ищу…' : "🔎 найти цены"}</button>`}
+      ${p.is_unique ? "" : `<button class="ghost sm search" data-p="${i}" title="найти цены онлайн (≥10 источников → 3 макс.)">${p._searching ? '<span class="spin"></span> ищу…' : "🔎 найти цены"}</button>`}
       ${badge}
       <span class="toggle" data-toggle="${i}">${p._open ? "свернуть ▲" : "цены ▼ (" + p.offers.length + ")"}</span>
       <a href="#" class="rmpos link" data-p="${i}" title="удалить позицию">🗑</a>
@@ -178,7 +178,7 @@ function posHtml(p, i) {
       <button class="ghost sm addoffer" data-p="${i}" style="margin-top:8px">+ цена</button>
       <div class="tsn-row">
         <div><label>Базовая расценка ТСН-2001</label>
-          <input type="number" step="0.01" value="${p.tsn_base_price ?? ""}" data-p="${i}" data-f="tsn_base_price" placeholder="по mos.ru если пусто"></div>
+          <input type="number" step="0.01" value="${p.tsn_base_price ?? ""}" data-p="${i}" data-f="tsn_base_price" placeholder="из справочника если пусто"></div>
         <div><label>Коэффициент пересчёта</label>
           <input type="number" step="0.01" value="${p.tsn_coefficient ?? ""}" data-p="${i}" data-f="tsn_coefficient"></div>
       </div>
@@ -293,6 +293,7 @@ $("buildBtn").onclick = async () => {
     fix_date: $("fixDate").value ? $("fixDate").value.split("-").reverse().join(".") : "",
     use_tsn: $("useTsn").checked,
     skip_search: !$("searchOnline").checked,
+    tsn_work_kind: $("tsnWorkKind").value,
     positions: positions.map((p) => ({
       number: p.number, name: p.name, full_name: p.full_name, type_mark: p.type_mark,
       unit: p.unit, qty: p.qty, is_unique: p.is_unique, discipline: p.discipline,

@@ -149,6 +149,18 @@
       <label><input type="checkbox" id="useTsn" checked /> Сравнивать с ТСН-2001 и фильтровать</label>
       <label><input type="checkbox" id="searchOnline" /> Искать цены онлайн для пустых позиций (нужен движок + ключи)</label>
     </div>
+    <div class="tsn-row">
+      <div>
+        <label>Вид работ для индекса пересчёта ТСН</label>
+        <select id="tsnWorkKind">
+          <option value="электромонтаж">Электромонтажные работы (сб. 8)</option>
+          <option value="связь">Монтаж оборудования связи / слаботочка (сб. 10)</option>
+          <option value="автоматика">Монтаж приборов и автоматики (сб. 11)</option>
+          <option value="пнр_электро">ПНР — электротехнические устройства</option>
+          <option value="пнр_асу">ПНР — автоматизированные системы управления</option>
+        </select>
+      </div>
+    </div>
     <div class="btn-row"><button id="buildBtn">Сформировать документы</button></div>
     <div id="progressWrap" style="display:none; margin-top:16px">
       <div class="status" id="statusText">—</div>

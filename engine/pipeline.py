@@ -49,6 +49,7 @@ class JobInputs:
     use_tsn: bool = True
     fix_date: str = ""
     skip_search: bool = False              # не искать в интернете (цены заданы вручную)
+    tsn_work_kind: str = "электромонтаж"   # вид работ для выбора индекса пересчёта (см. local_db)
     # ручные данные ТСН по № позиции: {number: (base_price, coefficient)}
     manual_tsn: dict[int, tuple[float | None, float | None]] = field(default_factory=dict)
 
@@ -56,7 +57,7 @@ class JobInputs:
 def run_pipeline(job: JobState, inputs: JobInputs, browser_factory) -> None:
     """Синхронный прогон. browser_factory() → контекстный менеджер Browser (или None для демо)."""
     from .search.agent import research_position
-    from .tsn.mos_ru import build_tsn_rows
+    from .tsn.local_db import build_tsn_rows
 
     try:
         job.status = "running"
@@ -117,9 +118,8 @@ def run_pipeline(job: JobState, inputs: JobInputs, browser_factory) -> None:
                         kac_max_price=r.max_offer.price_with_vat if r.max_offer else None))
                 job.say("Сравнение с ТСН-2001 (ручные расценки)…", 0.85)
             else:
-                job.say("Сравнение с ТСН-2001 (mos.ru)…", 0.85)
-                with browser_factory() as browser:
-                    tsn_rows = build_tsn_rows(browser, results)
+                job.say("Сравнение с ТСН-2001 (локальный справочник)…", 0.85)
+                tsn_rows = build_tsn_rows(results, inputs.tsn_work_kind)
             tsn_path, excluded = build_tsn(tsn_rows, inputs.object_name,
                                            OUTPUT_DIR / f"{job.job_id}_TSN.xlsx")
             job.outputs["tsn"] = str(tsn_path)

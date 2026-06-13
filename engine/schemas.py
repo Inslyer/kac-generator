@@ -76,4 +76,5 @@ class BuildRequest(BaseModel):
     fix_date: str = ""
     use_tsn: bool = True
     skip_search: bool = False           # не искать в интернете (цены заданы вручную)
+    tsn_work_kind: str = "электромонтаж"  # вид работ для индекса пересчёта ТСН
     positions: list[PositionIn]

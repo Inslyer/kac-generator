@@ -6,10 +6,16 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENGINE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = ENGINE_DIR.parent
 DATA_DIR = ENGINE_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 OUTPUT_DIR = DATA_DIR / "output"
 CACHE_DIR = DATA_DIR / "cache"
+
+# Локальные справочники ТСН-2001 (лежат в корне репо). Используются вместо mos.ru,
+# который недоступен с зарубежного IP/VPN.
+TSN_REFERENCE_FILE = REPO_ROOT / "ТСН-2001_электро_автоматика.md"
+TSN_INDICES_FILE = REPO_ROOT / "индексы.md"
 
 
 class Settings(BaseSettings):

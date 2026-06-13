@@ -126,7 +126,8 @@ def build(req: BuildRequest) -> dict:
     }
     inputs = JobInputs(
         object_name=req.object_name, spec_results=results, use_tsn=req.use_tsn,
-        fix_date=req.fix_date, skip_search=req.skip_search, manual_tsn=manual_tsn)
+        fix_date=req.fix_date, skip_search=req.skip_search,
+        tsn_work_kind=req.tsn_work_kind, manual_tsn=manual_tsn)
     run_pipeline_async(job, inputs, _browser_factory)
     return {"job_id": job_id}
 

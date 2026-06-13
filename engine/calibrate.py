@@ -151,21 +151,22 @@ def check_search(positions, n: int, discipline: str):
                            f"ИНН {o.requisites.inn or '—':<12} {shot} {o.url[:50]}")
 
 
-# ──────────────────────────────── ТСН mos.ru ────────────────────────────────
-@stage("5. ТСН-2001 (mos.ru)")
+# ──────────────────────────── ТСН локальный справочник ───────────────────────
+@stage("5. ТСН-2001 (локальный справочник)")
 def check_tsn(positions):
-    from engine.browser import Browser
-    from engine.tsn.mos_ru import fetch_current_coefficient, lookup_tsn_price
-    with Browser() as browser:
-        coeff = fetch_current_coefficient(browser)
-        line(OK if coeff else WARN,
-             f"коэффициент пересчёта: {coeff if coeff else 'не получен (проверьте доступ к mos.ru/структуру страницы)'}")
-        if positions:
-            p = next((x for x in positions if not x.is_unique), positions[0])
-            tsn = lookup_tsn_price(browser, p.name)
-            line(OK if tsn else WARN,
-                 f"расценка ТСН по «{p.name[:40]}»: "
-                 f"{tsn.get('base_price') if tsn else 'не найдена (доработать матчинг/селекторы)'}")
+    from engine.tsn.local_db import get_coefficient, load_indices, lookup_tsn_price
+    indices = load_indices()
+    line(OK if indices else WARN,
+         f"индексы из индексы.md: {indices if indices else 'не загружены (проверьте файл)'}")
+    coeff = get_coefficient("электромонтаж")
+    line(OK if coeff else WARN,
+         f"коэффициент пересчёта (электромонтаж): {coeff if coeff else 'не заполнен в индексы.md'}")
+    if positions:
+        p = next((x for x in positions if not x.is_unique), positions[0])
+        tsn = lookup_tsn_price(p.name)
+        line(OK if tsn else WARN,
+             f"расценка ТСН по «{p.name[:40]}»: "
+             f"{tsn.get('base_price') if tsn else 'не найдена в справочнике (уточнить наименование)'}")
 
 
 def main() -> None:
@@ -175,7 +176,7 @@ def main() -> None:
     ap.add_argument("--discipline", default="ЭМ")
     ap.add_argument("--unique", default="", help="подстроки уникального оборуд. через ;")
     ap.add_argument("--search", type=int, default=0, help="проверить поиск по N позициям")
-    ap.add_argument("--tsn", action="store_true", help="проверить mos.ru")
+    ap.add_argument("--tsn", action="store_true", help="проверить локальный справочник ТСН + индексы")
     args = ap.parse_args()
 
     print("\n  ДИАГНОСТИКА КАЦ-ГЕНЕРАТОРА")
