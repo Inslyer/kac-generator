@@ -115,13 +115,18 @@ def browser_search(browser, query: str, n: int = 20) -> list[str]:
             except Exception:
                 pass
             # Капча Яндекса. В видимом режиме ждём, пока пользователь решит её в окне браузера.
-            if _is_captcha(page) and settings.browser_headed:
-                print("⚠ Яндекс показал капчу — решите её в открытом окне браузера "
-                      "(ждём до 90 сек)…")
-                for _ in range(45):
-                    page.wait_for_timeout(2000)
-                    if not _is_captcha(page):
-                        break
+            if _is_captcha(page):
+                if settings.browser_headed:
+                    print("⚠ Яндекс показал капчу — решите её в открытом окне браузера "
+                          "(ждём до 90 сек)…")
+                    for _ in range(45):
+                        page.wait_for_timeout(2000)
+                        if not _is_captcha(page):
+                            break
+                else:
+                    print("⚠ Яндекс показал капчу в headless-режиме. Cookie устарели/не решены. "
+                          "Разово запустите поиск с BROWSER_HEADED=true, решите капчу — cookie "
+                          "сохранятся, затем верните BROWSER_HEADED=false.")
             urls = _grab(page)
     except Exception:
         return []

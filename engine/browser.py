@@ -20,6 +20,19 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 COOKIE_FILE = CACHE_DIR / "cookies.json"
 
+# Аргументы запуска и init-скрипт, маскирующие автоматизацию (меньше капчи в headless).
+_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+]
+_STEALTH_JS = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US']});
+Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+window.chrome = window.chrome || {runtime: {}};
+"""
+
 
 class Browser:
     """Лёгкая обёртка. Cookie сохраняются между запусками (storage_state)."""
@@ -33,12 +46,13 @@ class Browser:
     def __enter__(self) -> "Browser":
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=not self.headed)
+        self._browser = self._pw.chromium.launch(headless=not self.headed, args=_LAUNCH_ARGS)
         kwargs = dict(user_agent=UA, locale="ru-RU",
                       viewport={"width": 1366, "height": 900})
         if COOKIE_FILE.exists():
             kwargs["storage_state"] = str(COOKIE_FILE)  # подгружаем cookie (решённую капчу)
         self.context = self._browser.new_context(**kwargs)
+        self.context.add_init_script(_STEALTH_JS)  # маскировка автоматизации (меньше капчи)
         self.context.set_default_timeout(20000)
         return self
 
