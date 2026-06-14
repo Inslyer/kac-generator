@@ -21,9 +21,19 @@ TSN_INDICES_FILE = REPO_ROOT / "индексы.md"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENGINE_DIR / ".env", extra="ignore")
 
+    # Провайдер LLM: "anthropic" (Claude) или "deepseek". DeepSeek дешевле и совместим
+    # с OpenAI API, но БЕЗ vision — сканы идут через локальный OCR (Tesseract), см. spec_pdf.
+    llm_provider: str = "anthropic"
+
     anthropic_api_key: str = ""
     model_smart: str = "claude-opus-4-8"
     model_fast: str = "claude-sonnet-4-6"
+
+    # DeepSeek (OpenAI-совместимый). deepseek-chat — для всех задач (текст), без vision.
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model_smart: str = "deepseek-chat"
+    deepseek_model_fast: str = "deepseek-chat"
 
     dadata_token: str = ""
     yandex_search_api_key: str = ""

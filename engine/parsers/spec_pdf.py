@@ -2,12 +2,13 @@
 
 Поддерживает два типа PDF:
   1. С текстовым слоем (PyMuPDF извлекает текст напрямую) — путь parse через текст.
-  2. Скан без текста → распознавание через Claude vision (рендер страниц в PNG).
-     Tesseract используется как доп. опция, если установлен, но основной путь — vision
-     (надёжнее и не требует установки tesseract на машине сметчика).
+  2. Скан без текста → распознавание в текст:
+       • локальный OCR (Tesseract, рус+eng), если установлен — основной путь, работает
+         с любым провайдером LLM (в т.ч. DeepSeek, у которого нет vision);
+       • если OCR недоступен, а провайдер anthropic — фолбэк на Claude vision (картинки).
 
-Структуризация выполняется Claude API. Без ключа — бросает LLMUnavailable, UI предлагает
-ручной ввод. Завод-изготовитель из настройки CUSTOM_MAKERS → авто-пометка уникального оборудования.
+Структуризация выполняется LLM (Claude или DeepSeek). Без ключа — бросает LLMUnavailable,
+UI предлагает ручной ввод. Завод-изготовитель из CUSTOM_MAKERS → авто-пометка уникального.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from pathlib import Path
 import fitz
 
 from ..config import CACHE_DIR, settings
-from ..llm import complete_json
+from ..llm import LLMUnavailable, complete_json
 from ..models import SpecPosition
 
 SYSTEM = (
@@ -53,6 +54,53 @@ def render_pages(pdf_path: str | Path, dpi: int = 170, max_pages: int = 12) -> l
     return paths
 
 
+def _ocr_backend() -> str:
+    """Доступный локальный OCR: 'vision' (Apple, macOS) → 'tesseract' → '' (нет)."""
+    try:
+        import ocrmac  # noqa: F401
+        return "vision"
+    except Exception:
+        pass
+    try:
+        import pytesseract
+        pytesseract.get_tesseract_version()
+        return "tesseract"
+    except Exception:
+        return ""
+
+
+def ocr_available() -> bool:
+    """Доступно ли локальное распознавание сканов (Apple Vision или Tesseract)."""
+    return bool(_ocr_backend())
+
+
+def ocr_pages(pdf_path: str | Path, dpi: int = 300, max_pages: int = 12) -> str:
+    """Локальное распознавание скана в текст. Высокий DPI для таблиц.
+
+    На macOS — Apple Vision (ocrmac, без системных зависимостей); иначе — Tesseract.
+    """
+    from PIL import Image
+
+    backend = _ocr_backend()
+    doc = fitz.open(pdf_path)
+    parts: list[str] = []
+    try:
+        for i in range(min(max_pages, doc.page_count)):
+            pix = doc[i].get_pixmap(dpi=dpi)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            if backend == "vision":
+                from ocrmac import ocrmac as _ocrmac
+                # Apple Vision: список (текст, уверенность, bbox) сверху вниз
+                ann = _ocrmac.OCR(img, language_preference=["ru-RU", "en-US"]).recognize()
+                parts.append("\n".join(a[0] for a in ann))
+            elif backend == "tesseract":
+                import pytesseract
+                parts.append(pytesseract.image_to_string(img, lang="rus+eng"))
+    finally:
+        doc.close()
+    return "\n".join(parts)
+
+
 def _structure_positions(text: str = "", images: list[str] | None = None) -> list[dict]:
     """Зовёт Claude (текст или vision) и возвращает сырой массив позиций."""
     prompt = (f"Спецификация (текст):\n\n{text[:30000]}" if text
@@ -74,7 +122,17 @@ def parse_spec(
     """
     text, is_scanned = extract_raw_text(pdf_path)
     if is_scanned:
-        raw = _structure_positions(images=render_pages(pdf_path))
+        # Скан: сперва локальный OCR (работает с любым LLM, в т.ч. DeepSeek без vision).
+        ocr_text = ocr_pages(pdf_path) if ocr_available() else ""
+        if ocr_text.strip():
+            raw = _structure_positions(text=ocr_text)
+        elif settings.llm_provider.lower() == "anthropic":
+            raw = _structure_positions(images=render_pages(pdf_path))  # фолбэк на vision
+        else:
+            raise LLMUnavailable(
+                "Скан без текстового слоя, локальный OCR (Tesseract) недоступен, а провайдер "
+                f"{settings.llm_provider} не умеет распознавать изображения. Установите Tesseract "
+                "(brew install tesseract tesseract-lang) или используйте текстовый PDF.")
     else:
         raw = _structure_positions(text=text)
 

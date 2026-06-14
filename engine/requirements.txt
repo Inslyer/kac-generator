@@ -10,3 +10,6 @@ pymupdf==1.25.1
 pillow==11.1.0
 playwright==1.49.1
 python-dotenv==1.0.1
+# OCR сканов на macOS через Apple Vision (без системных зависимостей).
+# На Linux/VPS вместо него — pytesseract + бинарь tesseract (см. spec_pdf._ocr_backend).
+ocrmac==1.0.1; sys_platform == "darwin"

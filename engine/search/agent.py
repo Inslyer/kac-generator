@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 from ..config import CACHE_DIR, settings
@@ -31,6 +32,11 @@ EXTRACT_SYSTEM = (
 )
 
 
+def _log(msg: str) -> None:
+    """Диагностика поиска в окне движка (start.command)."""
+    print(f"[поиск] {msg}", file=sys.stderr, flush=True)
+
+
 def build_queries(pos: SpecPosition) -> list[str]:
     base = f"{pos.name} {pos.type_mark}".strip()
     try:
@@ -46,7 +52,8 @@ def _extract_from_page(page_text: str) -> dict | None:
     try:
         return complete_json(f"Текст страницы:\n\n{page_text[:12000]}",
                              system=EXTRACT_SYSTEM)
-    except Exception:
+    except Exception as e:
+        _log(f"    извлечение LLM упало: {type(e).__name__}: {e}")
         return None
 
 
@@ -56,11 +63,15 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
     Возвращает (офферы, число_обойдённых_карточек).
     """
     queries = build_queries(pos)
+    _log(f"позиция «{pos.name[:50]}» → запросы: {queries}")
     candidates: list[str] = []
     for q in queries:
         try:
-            candidates += search_candidates(browser, q, n=settings.min_sources)
-        except Exception:
+            found = search_candidates(browser, q, n=settings.min_sources)
+            _log(f"  запрос «{q[:40]}» → {len(found)} ссылок")
+            candidates += found
+        except Exception as e:
+            _log(f"  запрос «{q[:40]}» → сбой: {type(e).__name__}: {e}")
             continue  # сбой/капча по одному запросу не валит всю позицию
     # дедуп по хосту
     seen, urls = set(), []
@@ -70,6 +81,7 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
         if h and h not in seen:
             seen.add(h)
             urls.append(u)
+    _log(f"кандидатов после дедупа по хосту: {len(urls)}")
 
     offers: list[PriceOffer] = []
     checked = 0
@@ -82,8 +94,13 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 page.wait_for_timeout(1500)
                 text = page.inner_text("body")
                 data = _extract_from_page(text)
-                if not data or not data.get("price_with_vat"):
+                if not data:
+                    _log(f"  ✗ {url[:60]} → извлечение не дало JSON (текст {len(text)} симв.)")
                     continue
+                if not data.get("price_with_vat"):
+                    _log(f"  ✗ {url[:60]} → цена не найдена на странице")
+                    continue
+                _log(f"  ✓ {url[:60]} → цена {data.get('price_with_vat')}")
                 # регион НЕ фильтруем жёстко: страница часто не пишет про самовывоз явно.
                 # Берём оффер, проставляем предполагаемый регион — сметчик проверит/поправит
                 # в таблице (не-Москва/МО подсвечивается).
@@ -116,8 +133,10 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 screenshot_product=str(shot),
                 screenshot_requisites=str(req_shot) if req_shot else None,
             ))
-        except Exception:
+        except Exception as e:
+            _log(f"  ✗ {url[:60]} → ошибка: {type(e).__name__}: {e}")
             continue
+    _log(f"итог по позиции: офферов {len(offers)} из {checked} обойдённых")
     return offers, checked
 
 

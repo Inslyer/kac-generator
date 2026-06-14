@@ -50,11 +50,17 @@ async function checkEngine() {
   const el = $("engineStatus");
   try {
     const h = await (await fetch(engineUrl() + "/health")).json();
+    const llmName = (h.llm_provider === "deepseek") ? "DeepSeek" : "Claude";
+    const llmOk = (h.llm_key ?? h.anthropic_key);
     el.innerHTML = `движок на связи · НДС ${h.vat_rate}% · ист.≥${h.min_sources} · `
-      + (h.anthropic_key ? "Claude ✓" : "Claude ✗") + " · "
+      + (llmOk ? `${llmName} ✓` : `${llmName} ✗`) + " · "
+      + (h.ocr_available ? "OCR ✓" : "OCR ✗") + " · "
       + (h.dadata_token ? "DaData ✓" : "DaData ✗");
     el.style.color = "var(--ok)";
-    $("reqHint").textContent = h.anthropic_key ? "" : "для распознавания нужен ANTHROPIC_API_KEY";
+    $("reqHint").textContent = llmOk ? ""
+      : `для распознавания нужен ключ ${h.llm_provider === "deepseek" ? "DEEPSEEK_API_KEY" : "ANTHROPIC_API_KEY"}`;
+    const bh = $("bulkHint");
+    if (bh) bh.textContent = `самовывоз Москва/МО, ≥${h.min_sources} источников → 3 максимальные`;
     window._engineHealth = h;
   } catch {
     el.textContent = "движок недоступен — запустите engine (run.cmd / run.sh)";
@@ -165,7 +171,7 @@ function posHtml(p, i) {
       <input class="u" type="text" value="${esc(p.unit)}" data-p="${i}" data-f="unit" title="ед.">
       <input class="q" type="number" step="0.001" value="${p.qty || ""}" data-p="${i}" data-f="qty" title="кол-во">
       <label class="muted" style="font-weight:500"><input type="checkbox" ${p.is_unique ? "checked" : ""} data-p="${i}" data-f="is_unique"> уник.</label>
-      ${p.is_unique ? "" : `<button class="ghost sm search" data-p="${i}" title="найти цены онлайн (≥10 источников → 3 макс.)">${p._searching ? '<span class="spin"></span> ищу…' : "🔎 найти цены"}</button>`}
+      ${p.is_unique ? "" : `<button class="ghost sm search" data-p="${i}" title="найти цены онлайн (≥${window._engineHealth?.min_sources ?? 5} источников → 3 макс.)">${p._searching ? '<span class="spin"></span> ищу…' : "🔎 найти цены"}</button>`}
       ${badge}
       <span class="toggle" data-toggle="${i}">${p._open ? "свернуть ▲" : "цены ▼ (" + p.offers.length + ")"}</span>
       <a href="#" class="rmpos link" data-p="${i}" title="удалить позицию">🗑</a>
@@ -257,7 +263,8 @@ async function searchPosition(pi) {
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     const d = await r.json();
     p.offers = (d.offers || []).map((o) => ({ ...o, _busy: false }));
-    p._searched = true; p._found = d.found ?? p.offers.length; p._target = d.target ?? 12;
+    p._searched = true; p._found = d.found ?? p.offers.length;
+    p._target = d.target ?? window._engineHealth?.min_sources ?? 5;
     p._open = true;
     return d;
   } catch (e) {

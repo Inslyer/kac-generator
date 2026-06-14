@@ -49,10 +49,17 @@ def _browser_factory():
 
 @app.get("/health")
 def health() -> dict:
+    from .parsers.spec_pdf import ocr_available
+    provider = settings.llm_provider.lower()
+    llm_key = bool(settings.deepseek_api_key) if provider == "deepseek" \
+        else bool(settings.anthropic_api_key)
     return {
         "ok": True,
-        "anthropic_key": bool(settings.anthropic_api_key),
+        "llm_provider": provider,
+        "llm_key": llm_key,
+        "anthropic_key": bool(settings.anthropic_api_key),  # legacy для совместимости UI
         "dadata_token": bool(settings.dadata_token),
+        "ocr_available": ocr_available(),
         "min_sources": settings.min_sources,
         "top_prices": settings.top_prices,
         "vat_rate": settings.vat_rate,
