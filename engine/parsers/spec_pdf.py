@@ -1,11 +1,11 @@
-"""Парсер спецификации из PDF → список SpecPosition.
+"""Парсер спецификации → список SpecPosition. Принимает PDF, DOCX, XLSX/XLS.
 
-Поддерживает два типа PDF:
-  1. С текстовым слоем (PyMuPDF извлекает текст напрямую) — путь parse через текст.
-  2. Скан без текста → распознавание в текст:
-       • локальный OCR (Tesseract, рус+eng), если установлен — основной путь, работает
-         с любым провайдером LLM (в т.ч. DeepSeek, у которого нет vision);
-       • если OCR недоступен, а провайдер anthropic — фолбэк на Claude vision (картинки).
+Форматы:
+  • PDF с текстовым слоем → текст напрямую (PyMuPDF).
+  • PDF-скан без текста → локальный OCR (Tesseract/Apple Vision); если OCR нет, а провайдер
+    anthropic — фолбэк на Claude vision (картинки).
+  • DOCX → текст абзацев и таблиц (python-docx).
+  • XLSX/XLS → строки листов как текст (openpyxl).
 
 Структуризация выполняется LLM (Claude или DeepSeek). Без ключа — бросает LLMUnavailable,
 UI предлагает ручной ввод. Завод-изготовитель из CUSTOM_MAKERS → авто-пометка уникального.
@@ -40,6 +40,38 @@ def extract_raw_text(pdf_path: str | Path) -> tuple[str, bool]:
     is_scanned = len(text.strip()) < 40 * doc.page_count  # эвристика
     doc.close()
     return text, is_scanned
+
+
+def text_from_docx(path: str | Path) -> str:
+    """Текст из DOCX: абзацы + ячейки таблиц (таблицы — построчно, через табуляцию)."""
+    import docx
+
+    doc = docx.Document(str(path))
+    parts: list[str] = [p.text for p in doc.paragraphs if p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if any(cells):
+                parts.append("\t".join(cells))
+    return "\n".join(parts)
+
+
+def text_from_xlsx(path: str | Path, max_rows: int = 4000) -> str:
+    """Текст из XLSX/XLS: строки всех листов через табуляцию (пустые строки пропускаются)."""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    parts: list[str] = []
+    for ws in wb.worksheets:
+        parts.append(f"# Лист: {ws.title}")
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i >= max_rows:
+                break
+            cells = ["" if v is None else str(v) for v in row]
+            if any(c.strip() for c in cells):
+                parts.append("\t".join(cells))
+    wb.close()
+    return "\n".join(parts)
 
 
 def render_pages(pdf_path: str | Path, dpi: int = 170, max_pages: int = 12) -> list[str]:
@@ -102,39 +134,55 @@ def ocr_pages(pdf_path: str | Path, dpi: int = 300, max_pages: int = 12) -> str:
 
 
 def _structure_positions(text: str = "", images: list[str] | None = None) -> list[dict]:
-    """Зовёт Claude (текст или vision) и возвращает сырой массив позиций."""
-    prompt = (f"Спецификация (текст):\n\n{text[:30000]}" if text
+    """Зовёт LLM (текст или vision) и возвращает сырой массив позиций."""
+    # лимит большой: xlsx/docx-спецификации бывают объёмными, DeepSeek/Claude держат контекст
+    prompt = (f"Спецификация (текст):\n\n{text[:120000]}" if text
               else "Распознай таблицу-спецификацию со страниц-изображений.")
     # быстрая модель: на сканах (vision) это в разы быстрее, качество таблиц достаточное
     return complete_json(prompt, system=SYSTEM, smart=False, max_tokens=8192, images=images)
 
 
+def _raw_positions_from_pdf(path: str | Path) -> list[dict]:
+    text, is_scanned = extract_raw_text(path)
+    if not is_scanned:
+        return _structure_positions(text=text)
+    # Скан: сперва локальный OCR (работает с любым LLM, в т.ч. DeepSeek без vision).
+    ocr_text = ocr_pages(path) if ocr_available() else ""
+    if ocr_text.strip():
+        return _structure_positions(text=ocr_text)
+    if settings.llm_provider.lower() == "anthropic":
+        return _structure_positions(images=render_pages(path))  # фолбэк на vision
+    raise LLMUnavailable(
+        "Скан без текстового слоя, локальный OCR недоступен, а провайдер "
+        f"{settings.llm_provider} не умеет распознавать изображения. Установите Tesseract "
+        "(brew install tesseract tesseract-lang) или используйте текстовый PDF/DOCX/XLSX.")
+
+
+def _raw_positions(path: str | Path) -> list[dict]:
+    """Извлекает сырой массив позиций из файла по его расширению (PDF/DOCX/XLSX)."""
+    suffix = Path(path).suffix.lower()
+    if suffix == ".pdf":
+        return _raw_positions_from_pdf(path)
+    if suffix == ".docx":
+        return _structure_positions(text=text_from_docx(path))
+    if suffix in (".xlsx", ".xlsm", ".xls"):
+        return _structure_positions(text=text_from_xlsx(path))
+    raise LLMUnavailable(
+        f"Неподдерживаемый формат спецификации: {suffix or 'без расширения'}. "
+        "Принимаются PDF, DOCX, XLSX.")
+
+
 def parse_spec(
-    pdf_path: str | Path,
+    path: str | Path,
     discipline: str = "ЭМ",
     unique_names: set[str] | None = None,
 ) -> list[SpecPosition]:
-    """Парсит спецификацию в список позиций.
+    """Парсит спецификацию (PDF/DOCX/XLSX) в список позиций.
 
-    Текстовый PDF → через текст; скан → через Claude vision (рендер страниц).
     unique_names — подстроки наименований, помечаемые как уникальное оборудование.
     Дополнительно: завод-изготовитель из CUSTOM_MAKERS → авто-пометка уникальным.
     """
-    text, is_scanned = extract_raw_text(pdf_path)
-    if is_scanned:
-        # Скан: сперва локальный OCR (работает с любым LLM, в т.ч. DeepSeek без vision).
-        ocr_text = ocr_pages(pdf_path) if ocr_available() else ""
-        if ocr_text.strip():
-            raw = _structure_positions(text=ocr_text)
-        elif settings.llm_provider.lower() == "anthropic":
-            raw = _structure_positions(images=render_pages(pdf_path))  # фолбэк на vision
-        else:
-            raise LLMUnavailable(
-                "Скан без текстового слоя, локальный OCR (Tesseract) недоступен, а провайдер "
-                f"{settings.llm_provider} не умеет распознавать изображения. Установите Tesseract "
-                "(brew install tesseract tesseract-lang) или используйте текстовый PDF.")
-    else:
-        raw = _structure_positions(text=text)
+    raw = _raw_positions(path)
 
     unique_names = unique_names or set()
     positions: list[SpecPosition] = []
