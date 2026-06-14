@@ -15,8 +15,9 @@ import json
 import re
 import threading
 from datetime import date
+from pathlib import Path
 
-from ..config import BASE_FILE, settings
+from ..config import BASE_FILE, CACHE_DIR, settings
 from ..llm import complete_json
 from ..models import PositionResult, PriceOffer, SpecPosition
 
@@ -147,7 +148,24 @@ def entries() -> list[dict]:
 
 def status() -> dict:
     data = _load()
-    return {"count": len(data.get("entries", {})), "last_refresh": data.get("last_refresh")}
+    entries = data.get("entries", {})
+    # занятое место: индекс + реально используемые базой скриншоты карточек (в CACHE_DIR)
+    total = BASE_FILE.stat().st_size if BASE_FILE.exists() else 0
+    seen: set[str] = set()
+    for e in entries.values():
+        for o in e.get("offers", []):
+            sp = o.get("screenshot_product")
+            if not sp:
+                continue
+            name = Path(sp).name
+            if name in seen:
+                continue
+            seen.add(name)
+            f = CACHE_DIR / name
+            if f.exists():
+                total += f.stat().st_size
+    return {"count": len(entries), "last_refresh": data.get("last_refresh"),
+            "disk_bytes": total}
 
 
 def remove(key: str) -> bool:

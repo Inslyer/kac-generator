@@ -365,7 +365,9 @@ async function loadBaseStatus() {
   try {
     const d = await (await fetch(engineUrl() + "/base")).json();
     const when = d.last_refresh ? d.last_refresh.split("-").reverse().join(".") : "ещё не обновлялась";
-    $("baseStatus").textContent = `база: ${d.count} позиций · обновлено ${when}`;
+    const mb = (d.disk_bytes || 0) / 1048576;
+    const size = mb >= 1 ? mb.toFixed(1) + " МБ" : Math.round((d.disk_bytes || 0) / 1024) + " КБ";
+    $("baseStatus").textContent = `база: ${d.count} позиций · ${size} · обновлено ${when}`;
     window._baseEntries = d.entries || [];
     if ($("baseListWrap").style.display !== "none") renderBaseList();
   } catch { $("baseStatus").textContent = "база: движок недоступен"; }
