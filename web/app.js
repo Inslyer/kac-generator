@@ -17,17 +17,19 @@ if (location.protocol === "http:" && /^(127\.0\.0\.1|localhost)/.test(location.h
 }
 
 /* ---------- загрузка файлов ---------- */
-function wireDrop(dropId, inputId, store, listId) {
+function wireDrop(dropId, inputId, store, listId, exts) {
   const drop = $(dropId), input = $(inputId);
   drop.onclick = () => input.click();
   drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over");
-    addFiles([...e.dataTransfer.files], store, listId); };
-  input.onchange = () => addFiles([...input.files], store, listId);
+    addFiles([...e.dataTransfer.files], store, listId, exts); };
+  input.onchange = () => addFiles([...input.files], store, listId, exts);
 }
-function addFiles(files, store, listId) {
-  for (const f of files) if (f.type === "application/pdf") store.push(f);
+function addFiles(files, store, listId, exts) {
+  // фильтр по расширению (mime-тип у xlsx/docx ненадёжен) — exts вида [".pdf", ".xlsx"]
+  for (const f of files)
+    if (exts.some((x) => f.name.toLowerCase().endsWith(x))) store.push(f);
   renderFiles(store, listId);
 }
 function renderFiles(store, listId) {
@@ -42,8 +44,8 @@ document.addEventListener("click", (e) => {
     renderFiles(store, e.target.dataset.list);
   }
 });
-wireDrop("dropSpec", "specInput", specFiles, "specFiles");
-wireDrop("dropLetter", "letterInput", letterFiles, "letterFiles");
+wireDrop("dropSpec", "specInput", specFiles, "specFiles", [".pdf", ".docx", ".xlsx", ".xlsm", ".xls"]);
+wireDrop("dropLetter", "letterInput", letterFiles, "letterFiles", [".pdf"]);
 
 /* ---------- проверка движка ---------- */
 async function checkEngine() {
