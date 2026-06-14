@@ -171,6 +171,30 @@
     </div>
   </div>
 
+  <!-- База цен (кэш связок позиция→цены/скриншоты/реквизиты) -->
+  <div class="card" id="baseCard">
+    <h2>🗄️ База цен</h2>
+    <p class="hint" style="margin-top:0">При поиске цены сперва берутся из базы, вживую ищется
+      только то, чего в ней нет. Обновляйте базу раз в месяц.</p>
+    <div class="btn-row">
+      <button class="ghost sm" id="baseRefreshBtn">↻ Обновить базу</button>
+      <button class="ghost sm" id="baseToggleBtn">Показать список</button>
+      <span class="hint" id="baseStatus">база: —</span>
+    </div>
+    <div id="baseProgress" style="display:none; margin-top:10px">
+      <div class="bar"><i id="baseBar"></i></div>
+      <div id="baseStep" class="hint"></div>
+    </div>
+    <div id="baseListWrap" style="display:none; margin-top:12px">
+      <div class="btn-row">
+        <input type="text" id="baseAddName" placeholder="наименование позиции" style="flex:1" />
+        <input type="text" id="baseAddMark" placeholder="марка/тип" style="width:140px" />
+        <button class="ghost sm" id="baseAddBtn">+ В базу</button>
+      </div>
+      <div id="baseList" style="margin-top:10px"></div>
+    </div>
+  </div>
+
   <p class="sub" style="text-align:center">
     UI размещается на GitHub Pages, тяжёлую работу выполняет локальный движок на вашей машине.
   </p>

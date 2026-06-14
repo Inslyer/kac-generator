@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import threading
 from datetime import date
 
 from pydantic import BaseModel
@@ -216,8 +217,68 @@ class SearchRequest(BaseModel):
 
 @app.post("/search_position")
 def search_position(req: SearchRequest) -> dict:
-    """Ищет цены по позиции и возвращает офферы (со скриншотами) для проверки в UI."""
+    """Ищет цены по позиции и возвращает офферы (со скриншотами) для проверки в UI.
+
+    Cache-first: сперва смотрим в базу (без браузера), вживую ищем только при промахе.
+    """
     from .search.agent import research_position
+    from .search import base_db
+    pos = SpecPosition(number=1, name=req.name, type_mark=req.type_mark,
+                       discipline=req.discipline)
+    year = str(date.today().year)
+    quarter = str((date.today().month - 1) // 3 + 1)
+    from_base = False
+    try:
+        res = base_db.lookup(pos, year, quarter)
+        if res:
+            from_base = True
+        else:
+            with _browser_factory() as browser:
+                res = research_position(browser, pos, year, quarter)
+            base_db.upsert(pos, res)  # пополняем базу
+    except Exception as e:
+        raise HTTPException(502, f"Поиск не выполнен: {type(e).__name__}: {e}")
+    return {"offers": [_offer_to_dict(o) for o in res.offers],
+            "year": res.year, "quarter": res.quarter,
+            "found": res.sources_found, "checked": res.sources_checked,
+            "from_base": from_base,
+            "target": res.sources_target or settings.min_sources}
+
+
+@app.get("/base")
+def base_list() -> dict:
+    """Сводка базы цен: число позиций, дата обновления, список записей."""
+    from .search import base_db
+    return {**base_db.status(), "entries": base_db.entries()}
+
+
+@app.post("/base/refresh")
+def base_refresh() -> dict:
+    """Запускает фоновое обновление всей базы (повторный поиск по каждой позиции)."""
+    from .search import base_db
+    job_id = uuid.uuid4().hex[:12]
+    job = JobState(job_id=job_id, object_name="Обновление базы")
+    JOBS[job_id] = job
+
+    def _run():
+        try:
+            job.status = "running"
+            base_db.refresh_all(_browser_factory, job)
+            job.status = "done"
+        except Exception as e:
+            job.status = "error"
+            job.error = str(e)
+            job.say(f"Ошибка обновления базы: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/base/add")
+def base_add(req: SearchRequest) -> dict:
+    """Ручное добавление позиции в базу: поиск цен + сохранение."""
+    from .search.agent import research_position
+    from .search import base_db
     pos = SpecPosition(number=1, name=req.name, type_mark=req.type_mark,
                        discipline=req.discipline)
     year = str(date.today().year)
@@ -225,12 +286,19 @@ def search_position(req: SearchRequest) -> dict:
     try:
         with _browser_factory() as browser:
             res = research_position(browser, pos, year, quarter)
+        base_db.upsert(pos, res)
     except Exception as e:
         raise HTTPException(502, f"Поиск не выполнен: {type(e).__name__}: {e}")
-    return {"offers": [_offer_to_dict(o) for o in res.offers],
-            "year": res.year, "quarter": res.quarter,
-            "found": res.sources_found, "checked": res.sources_checked,
-            "target": res.sources_target or settings.min_sources}
+    if not res.offers:
+        raise HTTPException(404, "Цены не найдены — позиция не добавлена.")
+    return {"added": True, "offers_count": len(res.offers)}
+
+
+@app.delete("/base/{key:path}")
+def base_delete(key: str) -> dict:
+    """Удаляет запись базы по ключу (ручная чистка)."""
+    from .search import base_db
+    return {"removed": base_db.remove(key)}
 
 
 @app.get("/jobs/{job_id}")

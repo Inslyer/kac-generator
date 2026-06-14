@@ -11,6 +11,8 @@ DATA_DIR = ENGINE_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 OUTPUT_DIR = DATA_DIR / "output"
 CACHE_DIR = DATA_DIR / "cache"
+BASE_DIR = DATA_DIR / "base"               # постоянная база связок позиция→цены/скриншоты/реквизиты
+BASE_FILE = BASE_DIR / "index.json"
 
 # Локальные справочники ТСН-2001 (лежат в корне репо). Используются вместо mos.ru,
 # который недоступен с зарубежного IP/VPN.
@@ -86,5 +88,5 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-for _d in (UPLOAD_DIR, OUTPUT_DIR, CACHE_DIR):
+for _d in (UPLOAD_DIR, OUTPUT_DIR, CACHE_DIR, BASE_DIR):
     _d.mkdir(parents=True, exist_ok=True)

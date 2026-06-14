@@ -359,3 +359,82 @@ async function poll(jobId) {
   }
 }
 function setStatus(cls, text) { const el = $("statusText"); el.className = "status " + cls; el.textContent = text; }
+
+/* ---------- База цен ---------- */
+async function loadBaseStatus() {
+  try {
+    const d = await (await fetch(engineUrl() + "/base")).json();
+    const when = d.last_refresh ? d.last_refresh.split("-").reverse().join(".") : "ещё не обновлялась";
+    $("baseStatus").textContent = `база: ${d.count} позиций · обновлено ${when}`;
+    window._baseEntries = d.entries || [];
+    if ($("baseListWrap").style.display !== "none") renderBaseList();
+  } catch { $("baseStatus").textContent = "база: движок недоступен"; }
+}
+function renderBaseList() {
+  const items = window._baseEntries || [];
+  $("baseList").innerHTML = items.length
+    ? items.map((e) => `<div class="brow" style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(128,128,128,.15)">
+        <span style="flex:1">${esc(e.name)} ${e.type_mark ? `<span class="muted">(${esc(e.type_mark)})</span>` : ""}</span>
+        <span class="muted" style="width:90px;text-align:right">${e.offers_count} цен</span>
+        <span class="muted" style="width:120px;text-align:right">${e.max_price ? Math.round(e.max_price) + " ₽" : ""}</span>
+        <a href="#" class="link basedel" data-key="${esc(e.key)}" title="удалить из базы">✕</a></div>`).join("")
+    : `<div class="hint">база пуста</div>`;
+}
+$("baseToggleBtn").onclick = () => {
+  const w = $("baseListWrap");
+  const show = w.style.display === "none";
+  w.style.display = show ? "block" : "none";
+  $("baseToggleBtn").textContent = show ? "Скрыть список" : "Показать список";
+  if (show) renderBaseList();
+};
+$("baseRefreshBtn").onclick = async () => {
+  if (!confirm("Обновить всю базу? Это заново ищет цены по каждой позиции и может занять время.")) return;
+  $("baseRefreshBtn").disabled = true;
+  $("baseProgress").style.display = "block";
+  try {
+    const r = await fetch(engineUrl() + "/base/refresh", { method: "POST" });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    pollBase((await r.json()).job_id);
+  } catch (e) { $("baseStep").textContent = "Ошибка: " + e.message; $("baseRefreshBtn").disabled = false; }
+};
+async function pollBase(jobId) {
+  try {
+    const j = await (await fetch(`${engineUrl()}/jobs/${jobId}`)).json();
+    $("baseBar").style.width = Math.round((j.progress || 0) * 100) + "%";
+    $("baseStep").textContent = j.step || (j.log || []).slice(-1)[0] || "обработка…";
+    if (j.status === "done" || j.status === "error") {
+      $("baseStep").textContent = j.status === "done" ? "Готово ✓" : "Ошибка: " + (j.error || "");
+      $("baseRefreshBtn").disabled = false;
+      loadBaseStatus();
+      return;
+    }
+    setTimeout(() => pollBase(jobId), 1500);
+  } catch { $("baseStep").textContent = "Потеряна связь с движком"; $("baseRefreshBtn").disabled = false; }
+}
+$("baseAddBtn").onclick = async () => {
+  const name = $("baseAddName").value.trim();
+  if (!name) return alert("Укажите наименование позиции");
+  $("baseAddBtn").disabled = true;
+  const prev = $("baseAddBtn").textContent; $("baseAddBtn").textContent = "ищу…";
+  try {
+    const r = await fetch(engineUrl() + "/base/add", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, type_mark: $("baseAddMark").value.trim(), discipline: $("discipline").value }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const d = await r.json();
+    alert(`Добавлено в базу (${d.offers_count} цен).`);
+    $("baseAddName").value = ""; $("baseAddMark").value = "";
+    loadBaseStatus();
+  } catch (e) { alert("Не добавлено: " + e.message); }
+  finally { $("baseAddBtn").disabled = false; $("baseAddBtn").textContent = prev; }
+};
+document.addEventListener("click", async (e) => {
+  if (e.target.classList.contains("basedel")) {
+    e.preventDefault();
+    if (!confirm("Удалить позицию из базы?")) return;
+    await fetch(engineUrl() + "/base/" + encodeURIComponent(e.target.dataset.key), { method: "DELETE" });
+    loadBaseStatus();
+  }
+});
+loadBaseStatus();

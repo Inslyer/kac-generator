@@ -7,6 +7,7 @@ venv/
 engine/data/cache/
 engine/data/output/
 engine/data/uploads/
+engine/data/base/
 
 # Node
 node_modules/

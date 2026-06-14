@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8011", "--directory", "web"],
       "port": 8011
+    },
+    {
+      "name": "engine",
+      "runtimeExecutable": "./engine/.venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "engine.app:app", "--host", "127.0.0.1", "--port", "8766"],
+      "port": 8766
     }
   ]
 }

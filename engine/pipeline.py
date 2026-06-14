@@ -57,7 +57,15 @@ class JobInputs:
 def run_pipeline(job: JobState, inputs: JobInputs, browser_factory) -> None:
     """Синхронный прогон. browser_factory() → контекстный менеджер Browser (или None для демо)."""
     from .search.agent import research_position
+    from .search import base_db
     from .tsn.local_db import build_tsn_rows
+
+    def _apply(res, found):
+        res.offers = found.offers
+        res.year, res.quarter = year, quarter
+        res.sources_checked = found.sources_checked
+        res.sources_found = found.sources_found
+        res.sources_target = found.sources_target
 
     try:
         job.status = "running"
@@ -72,19 +80,27 @@ def run_pipeline(job: JobState, inputs: JobInputs, browser_factory) -> None:
             job.say("Поиск пропущен (цены заданы вручную).", 0.6)
         if to_search:
             job.say(f"Поиск цен по {len(to_search)} позициям…", 0.1)
-            with browser_factory() as browser:
-                for i, res in enumerate(to_search, 1):
-                    job.step = f"Поиск: {res.position.name[:40]}"
-                    found = research_position(browser, res.position, year, quarter)
-                    res.offers = found.offers
-                    res.year, res.quarter = year, quarter
-                    res.sources_checked = found.sources_checked
-                    res.sources_found = found.sources_found
-                    res.sources_target = found.sources_target
-                    flag = "" if found.sources_found >= found.sources_target else "  ⚠ мало источников"
-                    job.say(f"  [{i}/{len(to_search)}] найдено {found.sources_found}/"
-                            f"{found.sources_target} ист., в КАЦ {len(res.offers)} цен{flag}",
-                            0.1 + 0.5 * i / len(to_search))
+            # cache-first: сперва берём готовое из базы (без браузера), вживую ищем только промахи
+            misses = []
+            for res in to_search:
+                hit = base_db.lookup(res.position, year, quarter)
+                if hit:
+                    _apply(res, hit)
+                    job.say(f"  из базы: {res.position.name[:40]} ({len(hit.offers)} цен)", 0.1)
+                else:
+                    misses.append(res)
+            job.say(f"Из базы: {len(to_search) - len(misses)}, искать вживую: {len(misses)}", 0.15)
+            if misses:
+                with browser_factory() as browser:
+                    for i, res in enumerate(misses, 1):
+                        job.step = f"Поиск: {res.position.name[:40]}"
+                        found = research_position(browser, res.position, year, quarter)
+                        _apply(res, found)
+                        base_db.upsert(res.position, found)  # пополняем базу
+                        flag = "" if found.sources_found >= found.sources_target else "  ⚠ мало источников"
+                        job.say(f"  [{i}/{len(misses)}] найдено {found.sources_found}/"
+                                f"{found.sources_target} ист., в КАЦ {len(res.offers)} цен{flag}",
+                                0.15 + 0.45 * i / len(misses))
 
         # 3. Том ТКП
         job.say("Сборка Тома ТКП…", 0.65)
