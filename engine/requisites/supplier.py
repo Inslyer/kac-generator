@@ -20,6 +20,21 @@ def _log(msg: str) -> None:
     """Диагностика добора реквизитов в окно движка (start.command)."""
     print(f"[реквизиты] {msg}", file=sys.stderr, flush=True)
 
+
+def valid_inn(inn: str) -> bool:
+    """Проверяет контрольные цифры ИНН (10 или 12 знаков). Отсекает выдуманные/ошибочные."""
+    digits = re.sub(r"\D", "", inn or "")
+    d = [int(c) for c in digits]
+    if len(d) == 10:
+        w = [2, 4, 10, 3, 5, 9, 4, 6, 8]
+        return sum(w[i] * d[i] for i in range(9)) % 11 % 10 == d[9]
+    if len(d) == 12:
+        w1 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
+        w2 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]
+        return (sum(w1[i] * d[i] for i in range(10)) % 11 % 10 == d[10]
+                and sum(w2[i] * d[i] for i in range(11)) % 11 % 10 == d[11])
+    return False
+
 _REQ_SYSTEM = (
     "Из текста страниц интернет-магазина извлеки реквизиты юрлица-продавца (не производителя "
     "товара, а самого магазина). Верни JSON: {name: полное наименование (ООО/АО/ИП…), "
@@ -96,8 +111,9 @@ def fetch_requisites_from_site(browser, product_url: str) -> Requisites | None:
         return None
 
     inn = re.sub(r"\D", "", str(data.get("inn") or ""))
-    if len(inn) not in (10, 12):
-        _log(f"{host}: ИНН не извлечён (LLM вернул {data.get('inn')!r}); страниц с ИНН: {inn_seen}")
+    if not valid_inn(inn):
+        _log(f"{host}: ИНН не извлечён/невалиден (LLM вернул {data.get('inn')!r}); "
+             f"страниц с ИНН: {inn_seen}")
         _cache[host] = None
         return None
     _log(f"{host}: ✓ ИНН {inn}, {data.get('name')!r}")

@@ -14,7 +14,7 @@ from ..config import CACHE_DIR, settings
 from ..llm import complete_json
 from ..models import OrgStatus, PositionResult, PriceOffer, Requisites, SpecPosition
 from ..requisites.dadata import fetch_requisites
-from ..requisites.supplier import fetch_requisites_from_site
+from ..requisites.supplier import fetch_requisites_from_site, valid_inn
 from .search_engine import search_candidates
 
 QUERY_SYSTEM = (
@@ -46,6 +46,23 @@ def build_queries(pos: SpecPosition) -> list[str]:
     except Exception:
         pass
     return [f"{base} купить цена Москва", f"{base} цена", base]
+
+
+# Маркеры антибот/капча-интерстишелов (Yandex SmartCaptcha, Cloudflare, «я не робот» и пр.).
+# На таких страницах нет товара, а LLM может выдумать цену/ИНН — оффер отбрасываем.
+_BOT_MARKERS = (
+    "подтвердите, что", "вы не робот", "я не робот", "это не я",
+    "доступ ограничен", "доступ к сайту", "проверка безопасности",
+    "checking your browser", "captcha", "капч", "robot",
+    "запросы отправляли вы", "необычный трафик", "unusual traffic",
+)
+
+
+def _looks_like_bot_check(text: str) -> bool:
+    """Похоже ли на страницу-заглушку антибота/капчи (а не карточку товара)."""
+    low = text.lower()
+    # короткий текст + маркер → почти наверняка интерстишел (на реальной карточке текста много)
+    return len(text) < 1500 and any(m in low for m in _BOT_MARKERS)
 
 
 def _extract_from_page(page_text: str) -> dict | None:
@@ -93,6 +110,9 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
             with browser.page(url) as page:
                 page.wait_for_timeout(1500)
                 text = page.inner_text("body")
+                if _looks_like_bot_check(text):
+                    _log(f"  ✗ {url[:60]} → антибот/капча-страница, пропуск")
+                    continue
                 data = _extract_from_page(text)
                 if not data:
                     _log(f"  ✗ {url[:60]} → извлечение не дало JSON (текст {len(text)} симв.)")
@@ -106,10 +126,12 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 # в таблице (не-Москва/МО подсвечивается).
                 in_region = bool(data.get("moscow_pickup", False))
                 inn = re.sub(r"\D", "", str(data.get("seller_inn") or ""))
+                if not valid_inn(inn):   # отсекаем выдуманные ИНН (галлюцинация на тонкой странице)
+                    inn = ""
                 # ИНН с карточки товара бывает редко → обогащаем DaData (если есть токен),
                 # иначе/дополнительно добираем реквизиты с сайта продавца (работает под VPN,
                 # в отличие от checko/ФНС).
-                req = fetch_requisites(inn) if len(inn) in (10, 12) else None
+                req = fetch_requisites(inn) if inn else None
                 if req is None or not req.inn or not req.name:
                     site_req = fetch_requisites_from_site(browser, url)
                     if site_req:
