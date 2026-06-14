@@ -86,9 +86,6 @@ def _draw_requisites_panel(page: fitz.Page, rect: fitz.Rect, req) -> None:
         ("Наименование", getattr(req, "name", "")),
         ("ИНН", getattr(req, "inn", "")),
         ("КПП", getattr(req, "kpp", "")),
-        ("ОГРН", getattr(req, "ogrn", "")),
-        ("Адрес", getattr(req, "address", "")),
-        ("Город", getattr(req, "city", "")),
     ]
     max_chars = max(12, int((rect.width - 16) / _text_len("0", 8)))
     any_field = False
@@ -131,10 +128,8 @@ def _draw_position_page(doc: fitz.Document, res: PositionResult, fix_date: str) 
         right = fitz.Rect(split_x + gap / 2, ry0, A4.width - MARGIN, ry1)
         offer = offers[k] if k < len(offers) else None
         _place_image(page, left, offer.screenshot_product if offer else None, "карточка товара")
-        if offer and offer.screenshot_requisites and Path(offer.screenshot_requisites).exists():
-            _place_image(page, right, offer.screenshot_requisites, "реквизиты")
-        elif offer:
-            _draw_requisites_panel(page, right, offer.requisites)
+        if offer:
+            _draw_requisites_panel(page, right, offer.requisites)  # реквизиты всегда текстом
         else:
             _place_image(page, right, None, "реквизиты")
 

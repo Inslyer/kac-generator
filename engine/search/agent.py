@@ -13,7 +13,7 @@ from pathlib import Path
 from ..config import CACHE_DIR, settings
 from ..llm import complete_json
 from ..models import OrgStatus, PositionResult, PriceOffer, Requisites, SpecPosition
-from ..requisites.dadata import fetch_requisites, screenshot_requisites
+from ..requisites.dadata import fetch_requisites
 from ..requisites.supplier import fetch_requisites_from_site
 from .search_engine import search_candidates
 
@@ -121,9 +121,7 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 shot = CACHE_DIR / f"prod_{abs(hash(url)) % 10**10}.png"
                 page.screenshot(path=str(shot), clip={"x": 0, "y": 0,
                                                        "width": 1366, "height": 900})
-            # скриншот карточки реквизитов по ИНН (ресурсы из config, не checko); если ни один
-            # не отрисовался — в ТКП рисуется текстовая панель из req
-            req_shot = screenshot_requisites(browser, req.inn) if req.inn else None
+            # реквизиты в ТКП рисуются текстом из req (наименование/ИНН/КПП) — скриншот не нужен
             offers.append(PriceOffer(
                 price_with_vat=float(data["price_with_vat"]),
                 url=url,
@@ -131,7 +129,6 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                 in_moscow_region=in_region,
                 requisites=req,
                 screenshot_product=str(shot),
-                screenshot_requisites=str(req_shot) if req_shot else None,
             ))
         except Exception as e:
             _log(f"  ✗ {url[:60]} → ошибка: {type(e).__name__}: {e}")

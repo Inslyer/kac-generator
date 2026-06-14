@@ -9,10 +9,16 @@
 from __future__ import annotations
 
 import re
+import sys
 from urllib.parse import urlparse
 
 from ..llm import complete_json
 from ..models import OrgStatus, Requisites
+
+
+def _log(msg: str) -> None:
+    """Диагностика добора реквизитов в окно движка (start.command)."""
+    print(f"[реквизиты] {msg}", file=sys.stderr, flush=True)
 
 _REQ_SYSTEM = (
     "Из текста страниц интернет-магазина извлеки реквизиты юрлица-продавца (не производителя "
@@ -22,11 +28,22 @@ _REQ_SYSTEM = (
 )
 
 # Типовые пути к странице с реквизитами (по убыванию вероятности). Пустой путь — главная (подвал).
-_REQ_PATHS = ["", "/contacts", "/kontakty", "/about", "/info",
-              "/oplata-i-dostavka", "/rekvizity", "/requisites", "/payment"]
+_REQ_PATHS = ["", "/contacts", "/kontakty", "/contact", "/about", "/o-kompanii", "/info",
+              "/oplata-i-dostavka", "/rekvizity", "/requisites", "/payment", "/dostavka-i-oplata"]
 
-# Похоже на «ИНН 7701234567» — признак, что страница содержит реквизиты.
-_INN_RE = re.compile(r"\bИНН[\s:]*\d{10,12}\b", re.IGNORECASE)
+# Похоже на «ИНН 7701234567» — признак, что страница содержит реквизиты. Допускаем пробелы
+# внутри числа (часто верстают «ИНН 7733 123456»).
+_INN_RE = re.compile(r"ИНН[\s:№]*(\d[\d\s]{8,13}\d)", re.IGNORECASE)
+
+
+def _relevant_chunk(body: str) -> str:
+    """Возвращает фрагмент с реквизитами: окно вокруг ИНН (если найден), иначе хвост страницы."""
+    m = _INN_RE.search(body)
+    if m:
+        start = max(0, m.start() - 1500)
+        return body[start:m.end() + 1500]
+    return body[-3500:]
+
 
 _cache: dict[str, Requisites | None] = {}
 
@@ -49,34 +66,41 @@ def fetch_requisites_from_site(browser, product_url: str) -> Requisites | None:
     inn_seen = False
     loaded = 0
     for path in _REQ_PATHS:
-        if loaded >= 4 or (inn_seen and texts):
+        if loaded >= 5 or (inn_seen and texts):
             break
         try:
             with browser.page(base + path) as page:
-                page.wait_for_timeout(700)
+                page.wait_for_timeout(900)
                 body = page.inner_text("body")
-        except Exception:
+        except Exception as e:
+            _log(f"  {host}{path} → не загрузилась: {type(e).__name__}")
             continue
         loaded += 1
-        texts.append(body[-3500:])      # реквизиты обычно в подвале страницы
-        if _INN_RE.search(body):
+        has_inn = bool(_INN_RE.search(body))
+        _log(f"  {host}{path or '/'} → {len(body)} симв., ИНН на странице: {'да' if has_inn else 'нет'}")
+        texts.append(_relevant_chunk(body))
+        if has_inn:
             inn_seen = True
 
     if not texts:
+        _log(f"{host}: ни одна страница не загрузилась")
         _cache[host] = None
         return None
 
     combined = "\n---СТРАНИЦА---\n".join(texts)[:13000]
     try:
         data = complete_json(f"Магазин: {host}\n\n{combined}", system=_REQ_SYSTEM, smart=True)
-    except Exception:
+    except Exception as e:
+        _log(f"{host}: LLM-извлечение упало: {type(e).__name__}: {e}")
         _cache[host] = None
         return None
 
     inn = re.sub(r"\D", "", str(data.get("inn") or ""))
     if len(inn) not in (10, 12):
+        _log(f"{host}: ИНН не извлечён (LLM вернул {data.get('inn')!r}); страниц с ИНН: {inn_seen}")
         _cache[host] = None
         return None
+    _log(f"{host}: ✓ ИНН {inn}, {data.get('name')!r}")
 
     req = Requisites(
         name=str(data.get("name") or "").strip(),
