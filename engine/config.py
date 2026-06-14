@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     yandex_search_api_key: str = ""
     yandex_search_folder_id: str = ""
 
+    # SERP-API: XMLRiver/XMLStock — выдача Яндекса в XML без капчи. Если заданы user+key,
+    # поиск идёт через API (без браузера); иначе фолбэк на браузерную выдачу.
+    # URL: XMLRiver — https://xmlriver.com/search_yandex/xml ; XMLStock — https://xmlstock.com/yandex/xml/
+    xmlriver_user: str = ""
+    xmlriver_key: str = ""
+    xmlriver_url: str = "https://xmlriver.com/search_yandex/xml"
+    xmlriver_lr: int = 213  # код региона Яндекса (213 = Москва)
+
     min_sources: int = 12
     top_prices: int = 3
     vat_rate: int = 22

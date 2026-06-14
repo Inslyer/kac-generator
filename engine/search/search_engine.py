@@ -86,6 +86,34 @@ def yandex_api_search(query: str, n: int = 20) -> list[str]:
     return yandex_api_v2(query, n) or yandex_api_xml(query, n)
 
 
+def xmlriver_search(query: str, n: int = 20) -> list[str]:
+    """Выдача Яндекса через SERP-API XMLRiver/XMLStock (XML, без капчи).
+
+    Возвращает список URL или [] если ключи не заданы/сервис недоступен. Формат ответа —
+    Yandex XML (<doc><url>…</url></doc>), парсится тем же _urls_from_xml.
+    """
+    user, key = settings.xmlriver_user, settings.xmlriver_key
+    if not (user and key):
+        return []
+    try:
+        r = httpx.get(settings.xmlriver_url, params={
+            "user": user, "key": key, "query": query,
+            "groupby": min(n, 100), "lr": settings.xmlriver_lr,
+        }, timeout=30)
+        if r.status_code >= 400:
+            print(f"⚠ XMLRiver: HTTP {r.status_code} — {r.text[:200]}")
+            return []
+        # сервис кладёт текст ошибки в <error> вместо результатов
+        err = re.search(r"<error[^>]*>(.*?)</error>", r.text, re.DOTALL)
+        if err:
+            print(f"⚠ XMLRiver: {err.group(1)[:200]}")
+            return []
+        return _urls_from_xml(r.text)
+    except Exception as e:
+        print(f"⚠ XMLRiver: {type(e).__name__}: {e}")
+        return []
+
+
 def browser_search(browser, query: str, n: int = 20) -> list[str]:
     """Фолбэк: парсинг выдачи поисковика через Playwright (российский IP).
 
@@ -144,7 +172,8 @@ def browser_search(browser, query: str, n: int = 20) -> list[str]:
 
 
 def search_candidates(browser, query: str, n: int = 20) -> list[str]:
-    api = yandex_api_search(query, n)
+    """Выдача: XMLRiver/XMLStock (SERP-API, без капчи) → Yandex API → браузерный фолбэк."""
+    api = xmlriver_search(query, n) or yandex_api_search(query, n)
     if api:
         return [u for u in api if _host(u) not in _SKIP_HOSTS][:n]
     return browser_search(browser, query, n)
