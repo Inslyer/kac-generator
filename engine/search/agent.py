@@ -81,10 +81,13 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
     """
     queries = build_queries(pos)
     _log(f"позиция «{pos.name[:50]}» → запросы: {queries}")
+    # запрашиваем выдачу с запасом: после фильтров (маркетплейсы, дубли хостов, нет цены,
+    # капча) кандидатов отсеивается много, поэтому берём заметно больше, чем min_sources.
+    per_query = max(20, settings.min_sources * 4)
     candidates: list[str] = []
     for q in queries:
         try:
-            found = search_candidates(browser, q, n=settings.min_sources)
+            found = search_candidates(browser, q, n=per_query)
             _log(f"  запрос «{q[:40]}» → {len(found)} ссылок")
             candidates += found
         except Exception as e:
