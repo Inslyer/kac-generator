@@ -9,13 +9,16 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ..config import CACHE_DIR, settings
 from ..llm import complete_json
 from ..models import OrgStatus, PositionResult, PriceOffer, Requisites, SpecPosition
 from ..requisites.dadata import fetch_requisites
 from ..requisites.supplier import fetch_requisites_from_site, valid_inn
-from .search_engine import search_candidates
+from .search_engine import search_candidates, search_on_sites
+from .whitelist import requisites_for as wl_requisites_for
+from .whitelist import whitelist_hosts
 
 QUERY_SYSTEM = (
     "Сформируй 3 коротких поисковых запроса для покупки этого товара в РФ (купить, цена, "
@@ -81,39 +84,25 @@ def _extract_from_page(page_text: str) -> dict | None:
         return None
 
 
-def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffer], int]:
-    """Обходит кандидатов и собирает валидные офферы (самовывоз Москва/МО, есть цена).
-
-    Возвращает (офферы, число_обойдённых_карточек).
-    """
-    queries = build_queries(pos)
-    _log(f"позиция «{pos.name[:50]}» → запросы: {queries}")
-    # запрашиваем выдачу с запасом: после фильтров (маркетплейсы, дубли хостов, нет цены,
-    # капча) кандидатов отсеивается много, поэтому берём заметно больше, чем min_sources.
-    per_query = max(20, settings.min_sources * 4)
-    candidates: list[str] = []
-    for q in queries:
-        try:
-            found = search_candidates(browser, q, n=per_query)
-            _log(f"  запрос «{q[:40]}» → {len(found)} ссылок")
-            candidates += found
-        except Exception as e:
-            _log(f"  запрос «{q[:40]}» → сбой: {type(e).__name__}: {e}")
-            continue  # сбой/капча по одному запросу не валит всю позицию
-    # дедуп по хосту
-    seen, urls = set(), []
-    for u in candidates:
-        from urllib.parse import urlparse
+def _dedup_by_host(urls: list[str], skip_hosts: set[str] | None = None) -> list[str]:
+    """Убирает дубли по хосту (и хосты из skip_hosts), сохраняя порядок."""
+    from urllib.parse import urlparse
+    seen = set(skip_hosts or ())
+    out: list[str] = []
+    for u in urls:
         h = urlparse(u).netloc.replace("www.", "")
         if h and h not in seen:
             seen.add(h)
-            urls.append(u)
-    _log(f"кандидатов после дедупа по хосту: {len(urls)}")
+            out.append(u)
+    return out
 
+
+def _collect_offers(browser, urls: list[str], want: int) -> tuple[list[PriceOffer], int]:
+    """Обходит список URL, извлекает цену/реквизиты, возвращает (офферы, обойдено)."""
     offers: list[PriceOffer] = []
     checked = 0
     for url in urls:
-        if len(offers) >= settings.min_sources:
+        if len(offers) >= want:
             break
         checked += 1
         try:
@@ -132,24 +121,22 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
                     continue
                 _log(f"  ✓ {url[:60]} → цена {data.get('price_with_vat')}")
                 # регион НЕ фильтруем жёстко: страница часто не пишет про самовывоз явно.
-                # Берём оффер, проставляем предполагаемый регион — сметчик проверит/поправит
-                # в таблице (не-Москва/МО подсвечивается).
                 in_region = bool(data.get("moscow_pickup", False))
-                inn = re.sub(r"\D", "", str(data.get("seller_inn") or ""))
-                if not valid_inn(inn):   # отсекаем выдуманные ИНН (галлюцинация на тонкой странице)
-                    inn = ""
-                # ИНН с карточки товара бывает редко → обогащаем DaData (если есть токен),
-                # иначе/дополнительно добираем реквизиты с сайта продавца (работает под VPN,
-                # в отличие от checko/ФНС).
-                req = fetch_requisites(inn) if inn else None
-                if req is None or not req.inn or not req.name:
-                    site_req = fetch_requisites_from_site(browser, url)
-                    if site_req:
-                        req = site_req
+                # Реквизиты доверенного поставщика — прямо из Поставщики.md (надёжно, без скрейпа).
+                req = wl_requisites_for(url)
                 if req is None:
-                    req = Requisites(status=OrgStatus.SUPPLIER)
-                if not in_region:
-                    req.city = str(data.get("city") or "уточнить")
+                    inn = re.sub(r"\D", "", str(data.get("seller_inn") or ""))
+                    if not valid_inn(inn):   # отсекаем выдуманные ИНН (галлюцинация)
+                        inn = ""
+                    req = fetch_requisites(inn) if inn else None
+                    if req is None or not req.inn or not req.name:
+                        site_req = fetch_requisites_from_site(browser, url)
+                        if site_req:
+                            req = site_req
+                    if req is None:
+                        req = Requisites(status=OrgStatus.SUPPLIER)
+                    if not in_region:
+                        req.city = str(data.get("city") or "уточнить")
                 shot = CACHE_DIR / f"prod_{abs(hash(url)) % 10**10}.png"
                 page.screenshot(path=str(shot), clip={"x": 0, "y": 0,
                                                        "width": 1366, "height": 900})
@@ -165,6 +152,50 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
         except Exception as e:
             _log(f"  ✗ {url[:60]} → ошибка: {type(e).__name__}: {e}")
             continue
+    return offers, checked
+
+
+def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffer], int]:
+    """Сначала ищет у доверенных поставщиков (Поставщики.md); если их меньше TOP_PRICES —
+    добирает из общего интернета. Возвращает (офферы, число_обойдённых_карточек).
+    """
+    queries = build_queries(pos)
+    _log(f"позиция «{pos.name[:50]}» → запросы: {queries}")
+    # выдачу берём с запасом: после фильтров (маркетплейсы, дубли, нет цены, капча) отсев большой
+    per_query = max(20, settings.min_sources * 4)
+    want = settings.min_sources
+
+    # Фаза 1 — доверенные поставщики (site:-ограниченная выдача).
+    hosts = whitelist_hosts()
+    wl_urls: list[str] = []
+    for q in queries:
+        try:
+            wl_urls += search_on_sites(q, hosts, n=per_query)
+        except Exception as e:
+            _log(f"  (поставщики) запрос «{q[:40]}» → сбой: {type(e).__name__}: {e}")
+    wl_urls = _dedup_by_host(wl_urls)
+    _log(f"фаза 1 (поставщики): кандидатов {len(wl_urls)}")
+    offers, checked = _collect_offers(browser, wl_urls, want)
+    used_hosts = {urlparse(o.url).netloc.replace('www.', '') for o in offers}
+
+    # Фаза 2 — общий интернет, только если у поставщиков набралось меньше TOP_PRICES.
+    if len(offers) < settings.top_prices:
+        _log(f"фаза 1: офферов {len(offers)} (<{settings.top_prices}) → добор из интернета")
+        net_urls: list[str] = []
+        for q in queries:
+            try:
+                found = search_candidates(browser, q, n=per_query)
+                _log(f"  запрос «{q[:40]}» → {len(found)} ссылок")
+                net_urls += found
+            except Exception as e:
+                _log(f"  запрос «{q[:40]}» → сбой: {type(e).__name__}: {e}")
+        net_urls = _dedup_by_host(net_urls, skip_hosts=used_hosts)
+        net_offers, net_checked = _collect_offers(browser, net_urls, want - len(offers))
+        offers += net_offers
+        checked += net_checked
+    else:
+        _log(f"фаза 1: офферов {len(offers)} (≥{settings.top_prices}) — интернет не нужен")
+
     _log(f"итог по позиции: офферов {len(offers)} из {checked} обойдённых")
     return offers, checked
 

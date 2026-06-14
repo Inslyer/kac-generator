@@ -177,3 +177,19 @@ def search_candidates(browser, query: str, n: int = 20) -> list[str]:
     if api:
         return [u for u in api if _host(u) not in _SKIP_HOSTS][:n]
     return browser_search(browser, query, n)
+
+
+def search_on_sites(query: str, hosts: list[str], n: int = 20, batch: int = 6) -> list[str]:
+    """Выдача, ограниченная списком сайтов (оператор site:), батчами по batch доменов.
+
+    Используется для приоритетного поиска по доверенным поставщикам. Без SERP-API ключа
+    вернёт [] (фолбэка на браузер тут нет — оператор site: с батчами специфичен для выдачи).
+    """
+    if not (settings.xmlriver_user and settings.xmlriver_key):
+        return []
+    urls: list[str] = []
+    for i in range(0, len(hosts), batch):
+        group = hosts[i:i + batch]
+        site_expr = " | ".join(f"site:{h}" for h in group)
+        urls += xmlriver_search(f"{query} ({site_expr})", n)
+    return urls

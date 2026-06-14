@@ -17,6 +17,9 @@ CACHE_DIR = DATA_DIR / "cache"
 TSN_REFERENCE_FILE = REPO_ROOT / "ТСН-2001_электро_автоматика.md"
 TSN_INDICES_FILE = REPO_ROOT / "индексы.md"
 
+# Список доверенных поставщиков (приоритет в поиске цен + готовые реквизиты).
+SUPPLIERS_FILE = REPO_ROOT / "Поставщики.md"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENGINE_DIR / ".env", extra="ignore")
