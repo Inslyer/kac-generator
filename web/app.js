@@ -168,7 +168,8 @@ function posHtml(p, i) {
   return `
   <div class="pos ${p.is_unique ? "unique" : ""}">
     <div class="pos-head">
-      <input class="num" type="number" value="${p.number}" data-p="${i}" data-f="number" title="№">
+      <span class="posnum" title="порядковый номер позиции">№${i + 1}</span>
+      <input class="num" type="number" value="${p.number}" data-p="${i}" data-f="number" title="№ п.п. (графа А в КАЦ)">
       <input class="nm" type="text" value="${esc(p.name)}" data-p="${i}" data-f="name" placeholder="Наименование">
       <input class="u" type="text" value="${esc(p.unit)}" data-p="${i}" data-f="unit" title="ед.">
       <input class="q" type="number" step="0.001" value="${p.qty || ""}" data-p="${i}" data-f="qty" title="кол-во">

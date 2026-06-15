@@ -28,6 +28,9 @@ SYSTEM = (
     "unit (string — ед. изм., напр. шт/м/компл), qty (number — количество), "
     "maker (string — завод-изготовитель, если указан). "
     "Подпозиции «в составе» объединяй в родительскую позицию. "
+    "НЕ включай строки-ЗАГОЛОВКИ РАЗДЕЛОВ — это строки, где есть только название раздела без "
+    "количества, единицы измерения и марки (напр. «Прочее», «Расходные материалы», "
+    "«Оборудование», «Кабельная продукция», «Раздел 1»). Такие строки в массив не добавляй. "
     "Не выдумывай позиции. Сохраняй порядок. Только JSON."
 )
 
@@ -189,6 +192,12 @@ def parse_spec(
     for item in raw:
         name = str(item.get("name", "")).strip()
         if not name:
+            continue
+        # страховка от заголовков разделов: нет количества, единицы и марки → это не позиция
+        raw_unit = str(item.get("unit", "")).strip()
+        raw_mark = str(item.get("type_mark", "")).strip()
+        raw_qty = float(item.get("qty", 0) or 0)
+        if raw_qty <= 0 and not raw_unit and not raw_mark:
             continue
         maker = str(item.get("maker", "")).strip()
         is_unique = (
