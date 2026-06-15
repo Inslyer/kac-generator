@@ -201,10 +201,13 @@ def find_offers_for_position(browser, pos: SpecPosition) -> tuple[list[PriceOffe
 
 
 def research_position(browser, pos: SpecPosition, year: str, quarter: str) -> PositionResult:
-    """Полный цикл по одной позиции: поиск → отбор TOP максимальных по возрастанию."""
+    """Полный цикл по одной позиции: поиск → отбор TOP максимальных по возрастанию.
+
+    В all_offers сохраняются ВСЕ найденные кандидаты (для замены позиции в топ-3 в UI).
+    """
     offers, checked = find_offers_for_position(browser, pos)
     offers.sort(key=lambda o: o.price_with_vat)  # по возрастанию
     top = offers[-settings.top_prices:] if offers else []
-    return PositionResult(position=pos, offers=top, year=year, quarter=quarter,
+    return PositionResult(position=pos, offers=top, all_offers=offers, year=year, quarter=quarter,
                           sources_checked=checked, sources_found=len(offers),
                           sources_target=settings.min_sources)

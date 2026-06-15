@@ -59,8 +59,9 @@ def _save(data: dict) -> None:
 def _result_from_entry(entry: dict, pos: SpecPosition, year: str, quarter: str) -> PositionResult:
     """Восстанавливает PositionResult из записи базы (год/квартал — текущие, переданные)."""
     offers = [PriceOffer(**o) for o in entry.get("offers", [])]
+    cands = [PriceOffer(**o) for o in entry.get("candidates", [])] or offers
     return PositionResult(
-        position=pos, offers=offers, year=year, quarter=quarter,
+        position=pos, offers=offers, all_offers=cands, year=year, quarter=quarter,
         sources_found=len(offers), sources_checked=len(offers),
         sources_target=settings.min_sources)
 
@@ -123,6 +124,7 @@ def upsert(pos: SpecPosition, result: PositionResult) -> None:
             "unit": pos.unit, "discipline": pos.discipline,
             "captured_at": date.today().isoformat(),
             "offers": [o.model_dump() for o in result.offers],
+            "candidates": [o.model_dump() for o in (result.all_offers or result.offers)],
         }
         _save(data)
 

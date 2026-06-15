@@ -61,6 +61,8 @@ class PositionResult(BaseModel):
     """Итог по позиции: до 3 ценовых предложений + метаданные периода."""
     position: SpecPosition
     offers: list[PriceOffer] = Field(default_factory=list)  # отсортированы по возрастанию цены
+    # все найденные кандидаты (≥ offers) — для замены позиции в топ-3 в UI; в сборку не идут
+    all_offers: list[PriceOffer] = Field(default_factory=list)
     year: str = ""                   # графа I
     quarter: str = ""                # графа J
     tkp_page: Optional[int] = None   # графа Q — № страницы в Томе ТКП

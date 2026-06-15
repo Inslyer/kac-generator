@@ -239,6 +239,7 @@ def search_position(req: SearchRequest) -> dict:
     except Exception as e:
         raise HTTPException(502, f"Поиск не выполнен: {type(e).__name__}: {e}")
     return {"offers": [_offer_to_dict(o) for o in res.offers],
+            "candidates": [_offer_to_dict(o) for o in (res.all_offers or res.offers)],
             "year": res.year, "quarter": res.quarter,
             "found": res.sources_found, "checked": res.sources_checked,
             "from_base": from_base,

@@ -157,6 +157,7 @@ function posHtml(p, i) {
       <td><input type="text" value="${esc(o.url)}" data-p="${i}" data-o="${j}" data-f="url"></td>
       <td>${thumbsHtml(o, eng)}</td>
       <td><button class="ghost sm capture" data-p="${i}" data-o="${j}" title="снять скриншот карточки + реквизитов по URL">${o._busy ? '<span class="spin"></span>' : "📷"}</button></td>
+      <td><button class="ghost sm repl" data-p="${i}" data-o="${j}" title="заменить следующим кандидатом по цене">⤵</button></td>
       <td><input type="checkbox" ${o.from_letter ? "checked" : ""} data-p="${i}" data-o="${j}" data-f="from_letter" title="из письма (не в ТКП)"></td>
       <td><a href="#" class="rmoffer link" data-p="${i}" data-o="${j}">✕</a></td>
     </tr>`;
@@ -181,8 +182,8 @@ function posHtml(p, i) {
     </div>
     <div class="pos-body ${p._open ? "open" : ""}">
       <table class="offers">
-        <thead><tr><th>Цена с НДС</th><th>Поставщик</th><th>ИНН</th><th>Город склада</th><th>Ссылка</th><th>Скриншоты</th><th></th><th>письмо</th><th></th></tr></thead>
-        <tbody>${offers || `<tr><td colspan="9" class="muted">нет цен — добавьте или нажмите «найти цены»</td></tr>`}</tbody>
+        <thead><tr><th>Цена с НДС</th><th>Поставщик</th><th>ИНН</th><th>Город склада</th><th>Ссылка</th><th>Скриншоты</th><th></th><th></th><th>письмо</th><th></th></tr></thead>
+        <tbody>${offers || `<tr><td colspan="10" class="muted">нет цен — добавьте или нажмите «найти цены»</td></tr>`}</tbody>
       </table>
       <button class="ghost sm addoffer" data-p="${i}" style="margin-top:8px">+ цена</button>
       <div class="tsn-row">
@@ -214,15 +215,29 @@ $("posList").addEventListener("input", (e) => {
   }
 });
 $("posList").addEventListener("click", (e) => {
-  const t = e.target.closest("[data-toggle],.addoffer,.rmoffer,.rmpos,.capture,.search,.zoom") || e.target;
+  const t = e.target.closest("[data-toggle],.addoffer,.rmoffer,.rmpos,.capture,.repl,.search,.zoom") || e.target;
   if (t.dataset.toggle !== undefined) { const i = +t.dataset.toggle; positions[i]._open = !positions[i]._open; renderPositions(); }
   else if (t.classList.contains("addoffer")) { positions[+t.dataset.p].offers.push({ price_with_vat: 0, org_name: "", inn: "", kpp: "", url: "", city: "Москва", status: 2, from_letter: false, screenshot_product: "", screenshot_requisites: "" }); renderPositions(); }
   else if (t.classList.contains("rmoffer")) { e.preventDefault(); positions[+t.dataset.p].offers.splice(+t.dataset.o, 1); renderPositions(); }
   else if (t.classList.contains("rmpos")) { e.preventDefault(); positions.splice(+t.dataset.p, 1); renderPositions(); }
   else if (t.classList.contains("capture")) { captureOffer(+t.dataset.p, +t.dataset.o); }
+  else if (t.classList.contains("repl")) { replaceOffer(+t.dataset.p, +t.dataset.o); }
   else if (t.classList.contains("search")) { searchPosition(+t.dataset.p); }
   else if (t.classList.contains("zoom")) { openLightbox(t.src); }
 });
+
+// Заменяет оффер следующим по цене кандидатом (из всех найденных, ещё не показанным)
+function replaceOffer(pi, oi) {
+  const p = positions[pi];
+  const cands = p._candidates || [];
+  const usedUrls = new Set(p.offers.map((o) => o.url).filter(Boolean));
+  const next = cands
+    .filter((c) => c.url && !usedUrls.has(c.url))
+    .sort((a, b) => (b.price_with_vat || 0) - (a.price_with_vat || 0))[0];
+  if (!next) return alert("Нет других кандидатов для замены (запустите «найти цены»)");
+  p.offers[oi] = { ...next, _busy: false };
+  renderPositions();
+}
 
 async function captureOffer(pi, oi) {
   const o = positions[pi].offers[oi];
@@ -266,6 +281,7 @@ async function searchPosition(pi) {
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     const d = await r.json();
     p.offers = (d.offers || []).map((o) => ({ ...o, _busy: false }));
+    p._candidates = d.candidates || d.offers || [];   // все найденные — для замены в топ-3
     p._searched = true; p._found = d.found ?? p.offers.length;
     p._target = d.target ?? window._engineHealth?.min_sources ?? 5;
     p._open = true;
