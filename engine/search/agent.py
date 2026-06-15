@@ -109,6 +109,18 @@ def _collect_offers(browser, urls: list[str], want: int) -> tuple[list[PriceOffe
             with browser.page(url) as page:
                 page.wait_for_timeout(1500)
                 text = page.inner_text("body")
+                # антибот/капча: даём второй шанс — перезагрузка + ожидание (часто JS-челлендж
+                # или cookie проходят со 2-й попытки). Упорная капча (напр. vseinstrumenti.ru)
+                # требует резидентного прокси/cookie — тогда страница пропускается.
+                if _looks_like_bot_check(text):
+                    _log(f"  ↻ {url[:60]} → капча, повтор через 3.5с…")
+                    try:
+                        page.wait_for_timeout(3500)
+                        page.reload(wait_until="domcontentloaded")
+                        page.wait_for_timeout(2500)
+                        text = page.inner_text("body")
+                    except Exception:
+                        pass
                 if _looks_like_bot_check(text):
                     _log(f"  ✗ {url[:60]} → антибот/капча-страница, пропуск")
                     continue
