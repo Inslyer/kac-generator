@@ -26,18 +26,26 @@
   <h2 style="font-size:20px; margin:14px 0 4px">База-менеджер</h2>
   <p class="sub">Наполнение и поддержание базы цен: позиция → 3× (скриншот+цена / поставщик / ссылка / ИНН / КПП).</p>
 
-  <div class="row" style="margin-bottom:0">
-    <div><label>Адрес локального движка</label>
-      <input type="text" id="engine" value="http://127.0.0.1:8765" />
-      <div class="hint" id="engineStatus">проверка…</div></div>
-    <div><label>Дисциплина по умолчанию</label>
-      <select id="discipline"><option>ЭМ</option><option>АК</option></select>
-      <div class="hint" id="reqHint"></div></div>
+  <!-- Шаг 1: параметры -->
+  <div class="card">
+    <h2><span class="step">1</span> Параметры</h2>
+    <div class="row">
+      <div>
+        <label>Адрес локального движка</label>
+        <input type="text" id="engine" value="http://127.0.0.1:8765" />
+        <div class="hint" id="engineStatus">проверка…</div>
+      </div>
+      <div>
+        <label>Дисциплина по умолчанию</label>
+        <select id="discipline"><option>ЭМ</option><option>АК</option></select>
+        <div class="hint" id="reqHint"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Импорт из Excel -->
-  <div class="card" style="margin-top:18px">
-    <h2><span class="step">1</span> Импорт списка позиций из Excel</h2>
+  <!-- Шаг 2: импорт из Excel -->
+  <div class="card">
+    <h2><span class="step">2</span> Импорт списка позиций из Excel</h2>
     <p class="hint" style="margin-top:0">Столбцы: «Наименование» (обязательно), «Тип/марка», «Ед.»,
       «Дисциплина». По каждой позиции движок найдёт цены и сохранит блок в базу.</p>
     <div class="drop" id="dropImport">Перетащите .xlsx со списком позиций или нажмите</div>
@@ -53,9 +61,10 @@
     </div>
   </div>
 
-  <!-- Рабочая область: добавление/правка позиций -->
+  <!-- Шаг 3: рабочая область — добавление/правка позиций -->
   <div class="card">
-    <h2><span class="step">2</span> Добавить / поправить позиции</h2>
+    <h2><span class="step">3</span> Добавить / поправить позиции</h2>
+    <p class="hint" style="margin-top:0">Найдите цены по одной позиции или по всем сразу, поправьте офферы и сохраните блоки в базу.</p>
     <div class="row">
       <div><label>Наименование</label><input type="text" id="addName" placeholder="напр.: Лоток перфорированный 200x50"></div>
       <div style="max-width:200px"><label>Тип / марка</label><input type="text" id="addMark" placeholder="DKC 35264"></div>
@@ -63,8 +72,8 @@
     <div class="btn-row">
       <button class="ghost sm" id="addSearchBtn">+ Найти и добавить в базу</button>
       <button class="ghost sm" id="addManualBtn">+ Пустая позиция</button>
-      <button class="ghost sm" id="bulkBtn">🔎 Найти цены по всем</button>
-      <button class="ghost sm" id="saveAllBtn">💾 Сохранить всё в базу</button>
+      <button class="ghost sm" id="bulkBtn">Найти цены по всем</button>
+      <button class="ghost sm" id="saveAllBtn">Сохранить всё в базу</button>
       <span class="hint" id="posCount"></span>
     </div>
     <div id="posList" style="margin-top:14px"></div>
@@ -72,7 +81,8 @@
 
   <!-- База цен -->
   <div class="card">
-    <h2>🗄️ База цен</h2>
+    <h2>База цен</h2>
+    <p class="hint" style="margin-top:0">Что уже накоплено. Поддерживать актуальность рекомендуется раз в месяц.</p>
     <div class="btn-row" style="margin-top:0">
       <button class="ghost sm" id="baseRefreshBtn">↻ Обновить базу (переискать всё)</button>
       <button class="ghost sm" id="baseReloadBtn">Обновить список</button>
@@ -86,7 +96,7 @@
   </div>
 
   <p class="sub" style="text-align:center">
-    База общая со Сметчиком. Поддерживать актуальность рекомендуется раз в месяц.
+    UI и движок работают локально на вашей машине. База цен общая со Сметчиком.
   </p>
 </div>
 <div class="lightbox" id="lightbox"><img id="lightboxImg" src="" alt=""></div>
