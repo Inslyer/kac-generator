@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -300,6 +300,80 @@ def base_delete(key: str) -> dict:
     """Удаляет запись базы по ключу (ручная чистка)."""
     from .search import base_db
     return {"removed": base_db.remove(key)}
+
+
+class FillRequest(BaseModel):
+    positions: list[PositionIn]
+
+
+@app.post("/base/fill")
+def base_fill(req: FillRequest) -> dict:
+    """Сметчик: заполняет распознанные позиции готовыми блоками из базы (БЕЗ поиска).
+
+    По каждой позиции — офферы из базы и флаг in_base. Живой поиск не выполняется.
+    """
+    from .search import base_db
+    year = str(date.today().year)
+    quarter = str((date.today().month - 1) // 3 + 1)
+    out = []
+    for p in req.positions:
+        pos = SpecPosition(number=p.number, name=p.name, type_mark=p.type_mark,
+                           unit=p.unit, qty=p.qty, discipline=p.discipline)
+        res = base_db.lookup(pos, year, quarter)
+        out.append({
+            "number": p.number, "name": p.name, "type_mark": p.type_mark,
+            "unit": p.unit, "qty": p.qty, "discipline": p.discipline,
+            "in_base": bool(res),
+            "offers": [_offer_to_dict(o) for o in res.offers] if res else [],
+        })
+    found = sum(1 for r in out if r["in_base"])
+    return {"results": out, "found": found, "total": len(out)}
+
+
+@app.post("/base/save")
+def base_save(req: FillRequest) -> dict:
+    """База-менеджер: сохраняет отредактированные блоки позиций в базу (БЕЗ поиска)."""
+    from .search import base_db
+    saved = 0
+    for p in req.positions:
+        result = p.to_result()
+        if result.offers:
+            base_db.upsert(result.position, result)
+            saved += 1
+    return {"saved": saved}
+
+
+@app.post("/base/import")
+async def base_import(file: UploadFile, discipline: str = Form("ЭМ")) -> dict:
+    """База-менеджер: импорт списка позиций из Excel → фоновый поиск цен → сохранение в базу."""
+    from .search import base_db
+    job_dir = UPLOAD_DIR / f"import_{uuid.uuid4().hex[:8]}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    path = job_dir / (file.filename or "positions.xlsx")
+    path.write_bytes(await file.read())
+    try:
+        positions = base_db.positions_from_xlsx(path, default_discipline=discipline)
+    except Exception as e:
+        raise HTTPException(400, f"Не удалось прочитать Excel: {type(e).__name__}: {e}")
+    if not positions:
+        raise HTTPException(400, "В файле не найдено позиций (нужен столбец «Наименование»).")
+
+    job_id = uuid.uuid4().hex[:12]
+    job = JobState(job_id=job_id, object_name="Импорт в базу")
+    JOBS[job_id] = job
+
+    def _run():
+        try:
+            job.status = "running"
+            base_db.import_positions(positions, _browser_factory, job)
+            job.status = "done"
+        except Exception as e:
+            job.status = "error"
+            job.error = str(e)
+            job.say(f"Ошибка импорта: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id, "positions": len(positions)}
 
 
 @app.get("/jobs/{job_id}")

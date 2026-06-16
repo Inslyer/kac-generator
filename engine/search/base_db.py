@@ -185,6 +185,98 @@ def _position_from_entry(e: dict) -> SpecPosition:
                         unit=e.get("unit", "шт") or "шт", discipline=e.get("discipline", "ЭМ"))
 
 
+def positions_from_xlsx(path: str | Path, default_discipline: str = "ЭМ") -> list[SpecPosition]:
+    """Прямой разбор Excel со списком позиций (БЕЗ LLM) для наполнения базы.
+
+    Ищет строку-заголовок и сопоставляет колонки по подстрокам:
+    наимен./название→name, тип/марка/обознач→type_mark, ед→unit, дисципл→discipline.
+    Если заголовок не найден — берёт первый непустой текстовый столбец как наименование.
+    Строки без наименования пропускаются.
+    """
+    import openpyxl
+
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    rows = [[("" if c is None else str(c).strip()) for c in r]
+            for r in ws.iter_rows(values_only=True)]
+    wb.close()
+    if not rows:
+        return []
+
+    def find_col(row: list[str], *subs: str) -> int:
+        for j, c in enumerate(row):
+            cl = c.lower()
+            if any(s in cl for s in subs):
+                return j
+        return -1
+
+    # ищем заголовок в первых 10 строках (где есть «наимен»/«название»)
+    hdr_idx, col = -1, {}
+    for i, row in enumerate(rows[:10]):
+        jn = find_col(row, "наимен", "название")
+        if jn >= 0:
+            hdr_idx = i
+            col = {"name": jn,
+                   "type_mark": find_col(row, "тип", "марка", "обознач", "артикул"),
+                   "unit": find_col(row, "ед"),
+                   "discipline": find_col(row, "дисципл", "лист")}
+            break
+
+    out: list[SpecPosition] = []
+    if hdr_idx >= 0:
+        for row in rows[hdr_idx + 1:]:
+            name = row[col["name"]] if col["name"] < len(row) else ""
+            if not name:
+                continue
+            def cell(key: str) -> str:
+                j = col.get(key, -1)
+                return row[j] if 0 <= j < len(row) else ""
+            out.append(SpecPosition(
+                number=len(out) + 1, name=name,
+                type_mark=cell("type_mark"), unit=cell("unit") or "шт",
+                discipline=cell("discipline") or default_discipline))
+    else:
+        # без заголовка: первый столбец с текстом (не числом) считаем наименованием
+        for row in rows:
+            name = next((c for c in row if c and not c.replace(",", ".").replace(".", "").isdigit()), "")
+            if name:
+                out.append(SpecPosition(number=len(out) + 1, name=name,
+                                        unit="шт", discipline=default_discipline))
+    return out
+
+
+def import_positions(positions: list[SpecPosition], browser_factory, job=None) -> int:
+    """Ищет цены по списку позиций и сохраняет блоки в базу. Возвращает число добавленных."""
+    from .agent import research_position
+
+    year = str(date.today().year)
+    quarter = str((date.today().month - 1) // 3 + 1)
+    if job:
+        job.say(f"Импорт в базу: {len(positions)} позиций…", 0.05)
+    added = 0
+    if positions:
+        with browser_factory() as browser:
+            for i, pos in enumerate(positions, 1):
+                if job:
+                    job.step = f"Импорт: {pos.name[:40]}"
+                n_offers = 0
+                try:
+                    res = research_position(browser, pos, year, quarter)
+                    n_offers = len(res.offers)
+                    if res.offers:
+                        upsert(pos, res)
+                        added += 1
+                except Exception as ex:
+                    if job:
+                        job.say(f"  ✗ {pos.name[:40]}: {type(ex).__name__}")
+                if job:
+                    job.say(f"  [{i}/{len(positions)}] {pos.name[:40]} → {n_offers} цен",
+                            0.05 + 0.9 * i / len(positions))
+    if job:
+        job.say(f"Импортировано: {added}/{len(positions)}.", 1.0)
+    return added
+
+
 def refresh_all(browser_factory, job=None) -> int:
     """Заново ищет цены по всем записям базы и обновляет их. Возвращает число обновлённых."""
     from .agent import research_position
