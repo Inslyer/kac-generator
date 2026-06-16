@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Генрих · База-менеджер</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="app-header">
+    <span class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="720 10 160 155" fill="none" width="52" height="52">
+        <defs>
+          <linearGradient id="g" x1="724.694" y1="84.4382" x2="876.988" y2="84.4382" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#45B649"/><stop offset="1" stop-color="#D7DF23"/>
+          </linearGradient>
+        </defs>
+        <path d="M857.934 69.4473L843.774 79.6171C844.054 81.8341 844.194 84.051 844.194 86.3384C844.194 113.61 825.349 136.765 796.086 136.765C784.968 136.765 775.354 133.422 767.732 127.686C767.138 128.003 766.788 128.179 766.788 128.179C761.859 130.642 757.104 132.93 752.559 135.006C763.502 145.211 778.361 151.404 796.051 151.404C834.579 151.404 859.856 122.302 859.856 86.3384C859.856 79.8986 859.472 75.324 857.899 69.4473H857.934ZM796.086 21.167C757.733 21.167 732.456 50.4448 732.456 86.3735C732.456 92.6021 733.155 97.9158 734.623 103.617C738.609 99.9216 743.294 96.7193 748.503 92.5669C748.259 90.5259 748.154 88.4497 748.154 86.3384C748.154 58.9256 766.998 35.8059 796.086 35.8059C807.064 35.8059 816.539 39.0786 824.16 44.5682C829.44 41.8937 834.474 39.4656 839.334 37.2839C828.426 27.2548 813.637 21.167 796.086 21.167Z" fill="white"/>
+        <path d="M876.743 35.7005C873.317 30.3164 836.572 47.7706 794.653 74.6555C752.734 101.576 721.513 127.722 724.939 133.141C728.365 138.525 765.11 121.071 807.029 94.1858C848.948 67.2657 880.169 41.1197 876.743 35.7005Z" fill="url(#g)"/>
+      </svg>
+    </span>
+    <h1>Генрих</h1>
+    <a class="nav link" href="index.html">Сметчик →</a>
+  </header>
+  <h2 style="font-size:20px; margin:14px 0 4px">База-менеджер</h2>
+  <p class="sub">Наполнение и поддержание базы цен: позиция → 3× (скриншот+цена / поставщик / ссылка / ИНН / КПП).</p>
+
+  <div class="row" style="margin-bottom:0">
+    <div><label>Адрес локального движка</label>
+      <input type="text" id="engine" value="http://127.0.0.1:8765" />
+      <div class="hint" id="engineStatus">проверка…</div></div>
+    <div><label>Дисциплина по умолчанию</label>
+      <select id="discipline"><option>ЭМ</option><option>АК</option></select>
+      <div class="hint" id="reqHint"></div></div>
+  </div>
+
+  <!-- Импорт из Excel -->
+  <div class="card" style="margin-top:18px">
+    <h2><span class="step">1</span> Импорт списка позиций из Excel</h2>
+    <p class="hint" style="margin-top:0">Столбцы: «Наименование» (обязательно), «Тип/марка», «Ед.»,
+      «Дисциплина». По каждой позиции движок найдёт цены и сохранит блок в базу.</p>
+    <div class="drop" id="dropImport">Перетащите .xlsx со списком позиций или нажмите</div>
+    <input type="file" id="importInput" accept=".xlsx,.xlsm,.xls" hidden />
+    <ul class="files" id="importFiles"></ul>
+    <div class="btn-row">
+      <button id="importBtn">Импортировать в базу →</button>
+      <span class="hint" id="importHint"></span>
+    </div>
+    <div id="importProgress" style="display:none; margin-top:12px">
+      <div class="bar"><i id="importBar"></i></div>
+      <div id="importStep" class="hint"></div>
+    </div>
+  </div>
+
+  <!-- Рабочая область: добавление/правка позиций -->
+  <div class="card">
+    <h2><span class="step">2</span> Добавить / поправить позиции</h2>
+    <div class="row">
+      <div><label>Наименование</label><input type="text" id="addName" placeholder="напр.: Лоток перфорированный 200x50"></div>
+      <div style="max-width:200px"><label>Тип / марка</label><input type="text" id="addMark" placeholder="DKC 35264"></div>
+    </div>
+    <div class="btn-row">
+      <button class="ghost sm" id="addSearchBtn">+ Найти и добавить в базу</button>
+      <button class="ghost sm" id="addManualBtn">+ Пустая позиция</button>
+      <button class="ghost sm" id="bulkBtn">🔎 Найти цены по всем</button>
+      <button class="ghost sm" id="saveAllBtn">💾 Сохранить всё в базу</button>
+      <span class="hint" id="posCount"></span>
+    </div>
+    <div id="posList" style="margin-top:14px"></div>
+  </div>
+
+  <!-- База цен -->
+  <div class="card">
+    <h2>🗄️ База цен</h2>
+    <div class="btn-row" style="margin-top:0">
+      <button class="ghost sm" id="baseRefreshBtn">↻ Обновить базу (переискать всё)</button>
+      <button class="ghost sm" id="baseReloadBtn">Обновить список</button>
+      <span class="hint" id="baseStatus">база: —</span>
+    </div>
+    <div id="baseProgress" style="display:none; margin-top:10px">
+      <div class="bar"><i id="baseBar"></i></div>
+      <div id="baseStep" class="hint"></div>
+    </div>
+    <div id="baseList" style="margin-top:12px"></div>
+  </div>
+
+  <p class="sub" style="text-align:center">
+    База общая со Сметчиком. Поддерживать актуальность рекомендуется раз в месяц.
+  </p>
+</div>
+<div class="lightbox" id="lightbox"><img id="lightboxImg" src="" alt=""></div>
+<script>window.POS = { showSearch: true, showTsn: false, baseBadge: false };</script>
+<script src="common.js"></script>
+<script src="base.js"></script>
+</body>
+</html>

@@ -3,98 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Генрих · КАЦ-генератор</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-  :root {
-    --bg:#0E0E0E; --card:#1A1A1A; --bg-3:#131313; --line:#232323; --line-strong:#333333;
-    --fg:#F2F2F2; --mut:#A0A0A0; --acc:#A8DC1A; --green:#7BBE2F; --yellow:#F4E821;
-    --ok:#7BBE2F; --err:#DC3C3C; --warn:#F4E821;
-    --grad:linear-gradient(135deg,#7BBE2F 0%,#A8DC1A 50%,#F4E821 100%);
-    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
-  * { box-sizing:border-box; }
-  body { margin:0; font:15px/1.5 var(--font); background:var(--bg); color:var(--fg); }
-  .wrap { max-width:1080px; margin:0 auto; padding:32px 20px 90px; }
-  h1 { font-size:26px; font-weight:800; letter-spacing:-0.5px; margin:0 0 4px; }
-  h2 { font-size:16px; font-weight:800; letter-spacing:-0.3px; margin:0 0 14px; display:flex; align-items:center; gap:10px; }
-  /* фирменная шапка */
-  .app-header { display:flex; align-items:center; gap:16px; padding-bottom:14px; border-bottom:2px solid var(--acc); margin-bottom:6px; }
-  .app-header .mark { width:52px; height:52px; flex-shrink:0; }
-  .step { font-size:12px; background:var(--acc); color:var(--bg); font-weight:700; border-radius:20px; padding:1px 9px; }
-  .sub { color:var(--mut); margin:0 0 24px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:18px; }
-  label { display:block; font-weight:600; margin:14px 0 6px; font-size:13px; }
-  input[type=text], input[type=date], input[type=number], select, textarea {
-    width:100%; padding:9px 11px; background:var(--bg-3); border:1px solid var(--line-strong);
-    border-radius:8px; color:var(--fg); font-size:14px; font-family:var(--font); }
-  input::placeholder, textarea::placeholder { color:var(--mut); }
-  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 2px rgba(168,220,26,.2); }
-  textarea { resize:vertical; min-height:48px; }
-  .row { display:flex; gap:14px; flex-wrap:wrap; }
-  .row > div { flex:1; min-width:180px; }
-  .drop { border:2px dashed var(--line-strong); border-radius:10px; padding:16px; text-align:center;
-          color:var(--mut); cursor:pointer; transition:.15s; font-size:14px; }
-  .drop:hover, .drop.over { border-color:var(--acc); color:var(--fg); background:var(--bg-3); }
-  .files { list-style:none; padding:0; margin:8px 0 0; font-size:13px; }
-  .files li { padding:3px 0; color:var(--mut); }
-  /* основная кнопка — фирменный градиент; .ghost — тёмная вторичная */
-  button { background:var(--grad); color:var(--bg); border:0; border-radius:8px; padding:11px 20px;
-           font-size:15px; font-weight:700; font-family:var(--font); cursor:pointer;
-           box-shadow:0 2px 8px rgba(168,220,26,.25); transition:filter .15s, box-shadow .15s, border-color .15s, background .15s; }
-  button:hover { filter:brightness(1.06); box-shadow:0 3px 12px rgba(168,220,26,.4); }
-  button.ghost { background:var(--card); border:1px solid var(--line-strong); color:var(--fg); box-shadow:none; font-weight:600; }
-  button.ghost:hover { background:#232323; border-color:var(--acc); filter:none; }
-  button.sm { padding:5px 10px; font-size:13px; }
-  button:disabled { opacity:.5; cursor:not-allowed; filter:none; box-shadow:none; }
-  .btn-row { display:flex; gap:10px; align-items:center; margin-top:18px; flex-wrap:wrap; }
-  .checks { display:flex; gap:18px; align-items:center; margin-top:14px; flex-wrap:wrap; }
-  .checks label { display:inline-flex; gap:7px; align-items:center; margin:0; font-weight:500; }
-  .checks input { width:auto; accent-color:var(--acc); }
-  .bar { height:8px; background:var(--bg-3); border-radius:6px; overflow:hidden; margin:10px 0; }
-  .bar > i { display:block; height:100%; background:var(--grad); width:0; transition:width .3s; }
-  .log { font:12px/1.5 ui-monospace,Menlo,monospace; background:var(--bg-3); border:1px solid var(--line);
-         border-radius:8px; padding:12px; max-height:240px; overflow:auto; white-space:pre-wrap; color:var(--mut); }
-  .dl { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-  .dl a { text-decoration:none; background:var(--bg-3); border:1px solid var(--line-strong); color:var(--fg);
-          padding:10px 16px; border-radius:8px; font-weight:600; }
-  .dl a:hover { border-color:var(--acc); }
-  .status { font-weight:600; }
-  .status.done { color:var(--ok); } .status.error { color:var(--err); }
-  .pill { font-size:12px; padding:2px 8px; border-radius:20px; border:1px solid var(--line-strong); color:var(--mut); }
-  .hint { color:var(--mut); font-size:12px; margin-top:4px; }
-  /* таблица позиций */
-  .pos { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
-  .pos.unique { border-color:var(--warn); }
-  .pos-head { display:flex; gap:8px; align-items:center; padding:10px 12px; background:var(--bg-3); flex-wrap:wrap; }
-  .pos-head .posnum { flex-shrink:0; min-width:30px; height:26px; padding:0 8px; display:inline-flex;
-    align-items:center; justify-content:center; background:var(--acc); color:var(--bg);
-    font-weight:800; font-size:13px; border-radius:6px; }
-  .pos-head .num { width:34px; }
-  .pos-head .nm { flex:1; min-width:200px; }
-  .pos-head .u { width:64px; } .pos-head .q { width:74px; }
-  .pos-body { padding:10px 12px; display:none; }
-  .pos-body.open { display:block; }
-  .offers { width:100%; border-collapse:collapse; font-size:13px; }
-  .offers th { text-align:left; color:var(--mut); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line); }
-  .offers td { padding:3px 6px; }
-  .offers input { padding:6px 8px; font-size:13px; }
-  .tsn-row { display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; align-items:flex-end; }
-  .tsn-row > div { min-width:150px; }
-  .toggle { cursor:pointer; color:var(--acc); font-size:13px; user-select:none; }
-  .muted { color:var(--mut); }
-  .thumbs { display:flex; gap:4px; align-items:center; }
-  .thumbs img { width:46px; height:32px; object-fit:cover; border:1px solid var(--line-strong);
-                border-radius:4px; cursor:zoom-in; background:var(--bg-3); }
-  .thumbs .empty { width:46px; height:32px; border:1px dashed var(--line-strong); border-radius:4px; }
-  .lightbox { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none;
-              align-items:center; justify-content:center; z-index:50; cursor:zoom-out; }
-  .lightbox.open { display:flex; }
-  .lightbox img { max-width:92vw; max-height:92vh; border:1px solid var(--line-strong); border-radius:8px; }
-  .spin { display:inline-block; width:13px; height:13px; border:2px solid var(--mut);
-          border-top-color:transparent; border-radius:50%; animation:r .7s linear infinite; vertical-align:-2px; }
-  @keyframes r { to { transform:rotate(360deg); } }
-  a, a.link { color:var(--acc); }
-</style>
+<title>Генрих · Сметчик</title>
+<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div class="wrap">
@@ -111,13 +21,14 @@
       </svg>
     </span>
     <h1>Генрих</h1>
+    <a class="nav link" href="base.html">База-менеджер →</a>
   </header>
-  <h2 style="font-size:20px; margin:14px 0 4px">КАЦ-генератор</h2>
-  <p class="sub">Конъюнктурный анализ цен: Том ТКП (PDF) + КАЦ (Excel) + сравнение с ТСН-2001.</p>
+  <h2 style="font-size:20px; margin:14px 0 4px">Сметчик</h2>
+  <p class="sub">Распознаёт спецификацию, тянет готовые блоки из базы, собирает Том ТКП (PDF) + КАЦ (Excel).</p>
 
   <!-- Шаг 1: параметры и файлы -->
   <div class="card">
-    <h2><span class="step">1</span> Параметры и исходные файлы</h2>
+    <h2><span class="step">1</span> Параметры и спецификация</h2>
     <div class="row">
       <div>
         <label>Адрес локального движка</label>
@@ -136,7 +47,7 @@
       <div>
         <label>Уникальное оборудование (подстроки через «;»)</label>
         <input type="text" id="uniqueNames" placeholder="напр.: щит спецзаказа; уникальный модуль" />
-        <div class="hint">Цены берутся из писем, онлайн-поиск не выполняется</div>
+        <div class="hint">Цены берутся из писем, в базе не ищутся</div>
       </div>
     </div>
 
@@ -151,7 +62,7 @@
     <ul class="files" id="letterFiles"></ul>
 
     <div class="btn-row">
-      <button id="parseBtn">Распознать из файлов →</button>
+      <button id="parseBtn">Распознать и взять из базы →</button>
       <button class="ghost" id="manualBtn">Заполнить вручную</button>
       <span class="pill" id="reqHint"></span>
     </div>
@@ -159,12 +70,12 @@
 
   <!-- Шаг 2: позиции -->
   <div class="card" id="posCard" style="display:none">
-    <h2><span class="step">2</span> Позиции — проверьте и отредактируйте</h2>
-    <p class="hint" style="margin-top:0">Раскройте позицию, чтобы задать/исправить цены (3 максимальные),
-      реквизиты и расценку ТСН-2001. Цены сортируются по возрастанию автоматически.</p>
+    <h2><span class="step">2</span> Позиции — из базы</h2>
+    <p class="hint" style="margin-top:0">Цены подтягиваются из базы. Помеченные «нет в базе»
+      добавьте через База-менеджер либо заполните вручную здесь.</p>
     <div class="btn-row" style="margin-top:0">
-      <button class="ghost sm" id="bulkBtn">🔎 Найти цены по всем позициям</button>
-      <span class="hint" id="bulkHint">самовывоз Москва/МО → 3 максимальные</span>
+      <button class="ghost sm" id="refillBtn">↻ Обновить из базы</button>
+      <span class="hint" id="baseSummary"></span>
     </div>
     <div id="posList" style="margin-top:14px"></div>
     <div class="btn-row">
@@ -176,22 +87,7 @@
   <!-- Шаг 3: сборка -->
   <div class="card" id="buildCard" style="display:none">
     <h2><span class="step">3</span> Сборка документов</h2>
-    <div class="checks">
-      <label><input type="checkbox" id="useTsn" checked /> Сравнивать с ТСН-2001 и фильтровать</label>
-      <label><input type="checkbox" id="searchOnline" /> Искать цены онлайн для пустых позиций (нужен движок + ключи)</label>
-    </div>
-    <div class="tsn-row">
-      <div>
-        <label>Вид работ для индекса пересчёта ТСН</label>
-        <select id="tsnWorkKind">
-          <option value="электромонтаж">Электромонтажные работы (сб. 8)</option>
-          <option value="связь">Монтаж оборудования связи / слаботочка (сб. 10)</option>
-          <option value="автоматика">Монтаж приборов и автоматики (сб. 11)</option>
-          <option value="пнр_электро">ПНР — электротехнические устройства</option>
-          <option value="пнр_асу">ПНР — автоматизированные системы управления</option>
-        </select>
-      </div>
-    </div>
+    <p class="hint" style="margin-top:0">На выходе: Том ТКП (PDF) со скриншотами карточек и КАЦ (Excel).</p>
     <div class="btn-row"><button id="buildBtn">Сформировать документы</button></div>
     <div id="progressWrap" style="display:none; margin-top:16px">
       <div class="status" id="statusText">—</div>
@@ -202,35 +98,13 @@
     </div>
   </div>
 
-  <!-- База цен (кэш связок позиция→цены/скриншоты/реквизиты) -->
-  <div class="card" id="baseCard">
-    <h2>🗄️ База цен</h2>
-    <p class="hint" style="margin-top:0">При поиске цены сперва берутся из базы, вживую ищется
-      только то, чего в ней нет. Обновляйте базу раз в месяц.</p>
-    <div class="btn-row">
-      <button class="ghost sm" id="baseRefreshBtn">↻ Обновить базу</button>
-      <button class="ghost sm" id="baseToggleBtn">Показать список</button>
-      <span class="hint" id="baseStatus">база: —</span>
-    </div>
-    <div id="baseProgress" style="display:none; margin-top:10px">
-      <div class="bar"><i id="baseBar"></i></div>
-      <div id="baseStep" class="hint"></div>
-    </div>
-    <div id="baseListWrap" style="display:none; margin-top:12px">
-      <div class="btn-row">
-        <input type="text" id="baseAddName" placeholder="наименование позиции" style="flex:1" />
-        <input type="text" id="baseAddMark" placeholder="марка/тип" style="width:140px" />
-        <button class="ghost sm" id="baseAddBtn">+ В базу</button>
-      </div>
-      <div id="baseList" style="margin-top:10px"></div>
-    </div>
-  </div>
-
   <p class="sub" style="text-align:center">
-    UI размещается на GitHub Pages, тяжёлую работу выполняет локальный движок на вашей машине.
+    UI и движок работают локально на вашей машине. База цен общая с Базой-менеджером.
   </p>
 </div>
 <div class="lightbox" id="lightbox"><img id="lightboxImg" src="" alt=""></div>
+<script>window.POS = { showSearch: false, showTsn: false, baseBadge: true };</script>
+<script src="common.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
